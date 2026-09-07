@@ -1,17 +1,23 @@
 #![no_std]
 #![no_main]
 
-use core::panic::PanicInfo;
+use uefi::prelude::*;
 
-#[unsafe(no_mangle)]
-pub extern "efiapi" fn efi_main() -> ! {
-    loop {
-        core::hint::spin_loop();
-    }
-}
+#[entry]
+fn main() -> Status {
+    uefi::helpers::init().unwrap();
 
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+    uefi::println!();
+    uefi::println!("================================");
+    uefi::println!("       MENTACORE BOOTLOADER");
+    uefi::println!("================================");
+    uefi::println!();
+    uefi::println!("UEFI initialized.");
+    uefi::println!("Bootloader entry reached.");
+    uefi::println!();
+    uefi::println!("MENTACORE BOOTLOADER OK");
+    uefi::println!();
+
     loop {
         core::hint::spin_loop();
     }
