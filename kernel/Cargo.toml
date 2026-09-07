@@ -1,0 +1,7 @@
+[package]
+name = "mentacore-kernel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mentacore-boot-protocol = { path = "../boot_protocol" }
