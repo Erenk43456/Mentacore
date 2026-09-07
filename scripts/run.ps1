@@ -2,13 +2,18 @@
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 
-$BootloaderEfi = Join-Path $ProjectRoot "target\x86_64-unknown-uefi\debug\mentacore-bootloader.efi"
-$EspRoot       = Join-Path $ProjectRoot "target\esp"
-$BootEfi       = Join-Path $EspRoot "EFI\BOOT\BOOTX64.EFI"
-$VarsTemplate  = "C:\Program Files\qemu\share\edk2-i386-vars.fd"
-$VarsFile      = Join-Path $ProjectRoot "target\edk2-x86_64-vars.fd"
-$Qemu          = "C:\Program Files\qemu\qemu-system-x86_64.exe"
-$FirmwareCode = "C:\Program Files\qemu\share\edk2-x86_64-code.fd"
+$KernelElf      = Join-Path $ProjectRoot "target\x86_64-unknown-none\debug\mentacore-kernel"
+$BootloaderEfi  = Join-Path $ProjectRoot "target\x86_64-unknown-uefi\debug\mentacore-bootloader.efi"
+
+$EspRoot        = Join-Path $ProjectRoot "target\esp"
+$BootEfi        = Join-Path $EspRoot "EFI\BOOT\BOOTX64.EFI"
+$EspKernel      = Join-Path $EspRoot "kernel.elf"
+
+$VarsTemplate   = "C:\Program Files\qemu\share\edk2-i386-vars.fd"
+$VarsFile       = Join-Path $ProjectRoot "target\edk2-x86_64-vars.fd"
+
+$Qemu           = "C:\Program Files\qemu\qemu-system-x86_64.exe"
+$FirmwareCode   = "C:\Program Files\qemu\share\edk2-x86_64-code.fd"
 
 Write-Host ""
 Write-Host "========================================"
@@ -18,7 +23,18 @@ Write-Host ""
 
 Set-Location $ProjectRoot
 
-Write-Host "[1/4] Building bootloader..." -ForegroundColor Cyan
+Write-Host "[1/5] Building kernel..." -ForegroundColor Cyan
+
+cargo build -p mentacore-kernel --target x86_64-unknown-none
+
+if (-not (Test-Path $KernelElf)) {
+    throw "Kernel ELF was not produced: $KernelElf"
+}
+
+Write-Host "[OK] Kernel built." -ForegroundColor Green
+Write-Host ""
+
+Write-Host "[2/5] Building bootloader..." -ForegroundColor Cyan
 
 cargo build -p mentacore-bootloader --target x86_64-unknown-uefi
 
@@ -29,7 +45,7 @@ if (-not (Test-Path $BootloaderEfi)) {
 Write-Host "[OK] Bootloader built." -ForegroundColor Green
 Write-Host ""
 
-Write-Host "[2/4] Preparing EFI boot directory..." -ForegroundColor Cyan
+Write-Host "[3/5] Preparing EFI boot directory..." -ForegroundColor Cyan
 
 New-Item -ItemType Directory -Force (Split-Path $BootEfi) | Out-Null
 
@@ -41,7 +57,18 @@ Copy-Item `
 Write-Host "[OK] BOOTX64.EFI updated." -ForegroundColor Green
 Write-Host ""
 
-Write-Host "[3/4] Preparing UEFI variables..." -ForegroundColor Cyan
+Write-Host "[4/5] Copying kernel to ESP..." -ForegroundColor Cyan
+
+Copy-Item `
+    $KernelElf `
+    $EspKernel `
+    -Force
+
+Write-Host "[OK] kernel.elf copied." -ForegroundColor Green
+Write-Host ""
+
+Write-Host "[5/5] Starting QEMU..." -ForegroundColor Cyan
+Write-Host ""
 
 if (-not (Test-Path $VarsFile)) {
     if (-not (Test-Path $VarsTemplate)) {
@@ -53,12 +80,6 @@ if (-not (Test-Path $VarsFile)) {
         $VarsFile `
         -Force
 }
-
-Write-Host "[OK] UEFI VARS ready." -ForegroundColor Green
-Write-Host ""
-
-Write-Host "[4/4] Starting QEMU..." -ForegroundColor Cyan
-Write-Host ""
 
 & $Qemu `
     -machine q35 `
