@@ -31,6 +31,18 @@ impl Framebuffer {
         }
     }
 
+    pub fn width(&self) -> u32 {
+        self.width as u32
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height as u32
+    }
+
+    pub fn resolution(&self) -> (u32, u32) {
+        (self.width(), self.height())
+    }
+
     unsafe fn write_pixel(
         &mut self,
         x: usize,

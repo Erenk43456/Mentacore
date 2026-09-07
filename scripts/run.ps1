@@ -27,6 +27,10 @@ Write-Host "[1/5] Building kernel..." -ForegroundColor Cyan
 
 cargo build -p mentacore-kernel --target x86_64-unknown-none
 
+if ($LASTEXITCODE -ne 0) {
+    throw "Kernel build failed with exit code: $LASTEXITCODE"
+}
+
 if (-not (Test-Path $KernelElf)) {
     throw "Kernel ELF was not produced: $KernelElf"
 }
@@ -37,6 +41,10 @@ Write-Host ""
 Write-Host "[2/5] Building bootloader..." -ForegroundColor Cyan
 
 cargo build -p mentacore-bootloader --target x86_64-unknown-uefi
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Bootloader build failed with exit code: $LASTEXITCODE"
+}
 
 if (-not (Test-Path $BootloaderEfi)) {
     throw "Bootloader EFI was not produced: $BootloaderEfi"

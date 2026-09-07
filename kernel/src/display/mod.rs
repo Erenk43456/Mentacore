@@ -1,4 +1,8 @@
 pub mod boot_ui;
-pub mod framebuffer;
+
+mod color;
+mod components;
+mod framebuffer;
+mod geometry;
 
 pub use framebuffer::Framebuffer;
