@@ -407,6 +407,39 @@ fn get_framebuffer_info() -> Result<BootInfo, ()> {
     let mut gop = boot::open_protocol_exclusive::<GraphicsOutput>(handle)
         .map_err(|_| ())?;
 
+    const TARGET_WIDTH: usize = 1920;
+    const TARGET_HEIGHT: usize = 1080;
+
+    println!("Searching for preferred GOP mode...");
+    println!(
+        "Preferred resolution: {}x{}",
+        TARGET_WIDTH,
+        TARGET_HEIGHT
+    );
+
+    let mut selected_mode = None;
+
+    for mode in gop.modes() {
+        let info = mode.info();
+        let (width, height) = info.resolution();
+
+        if width == TARGET_WIDTH && height == TARGET_HEIGHT {
+            selected_mode = Some(mode);
+            break;
+        }
+    }
+
+    if let Some(mode) = selected_mode {
+        println!("Found preferred GOP mode.");
+
+        gop.set_mode(&mode).map_err(|_| ())?;
+
+        println!("GOP mode changed.");
+    } else {
+        println!("Preferred GOP mode not found.");
+        println!("Keeping current GOP mode.");
+    }
+
     let info = gop.current_mode_info();
 
     let (width, height) = info.resolution();
