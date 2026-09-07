@@ -365,6 +365,22 @@ fn main() -> Status {
         boot_info.framebuffer_format
     );
 
+    let kernel_ptr = entry as *const u8;
+
+    unsafe {
+        println!(
+            "Kernel bytes at entry: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+            kernel_ptr.read(),
+            kernel_ptr.add(1).read(),
+            kernel_ptr.add(2).read(),
+            kernel_ptr.add(3).read(),
+            kernel_ptr.add(4).read(),
+            kernel_ptr.add(5).read(),
+            kernel_ptr.add(6).read(),
+            kernel_ptr.add(7).read(),
+        );
+    }
+
     // ------------------------------------------------------------
     // Kernel handoff.
     //
@@ -484,15 +500,13 @@ unsafe fn jump_to_kernel(
     stack_top: u64,
     boot_info: u64,
 ) -> ! {
-    unsafe {
-        core::arch::asm!(
-            "mov rsp, {stack}",
-            "mov rdi, {boot_info}",
-            "jmp {entry}",
-            stack = in(reg) stack_top,
-            boot_info = in(reg) boot_info,
-            entry = in(reg) entry,
-            options(noreturn)
-        );
-    }
+    core::arch::asm!(
+        "mov rsp, {stack}",
+        "mov rdi, {boot_info}",
+        "jmp {entry}",
+        stack = in(reg) stack_top,
+        boot_info = in(reg) boot_info,
+        entry = in(reg) entry,
+        options(noreturn)
+    );
 }

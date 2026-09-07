@@ -1,4 +1,4 @@
+pub mod boot_ui;
 pub mod framebuffer;
-pub mod font;
 
 pub use framebuffer::Framebuffer;

@@ -6,13 +6,10 @@ mod display;
 use core::arch::asm;
 use core::panic::PanicInfo;
 
-use display::Framebuffer;
+use display::{boot_ui, Framebuffer};
 use mentacore_boot_protocol::BootInfo;
 
 const COM1: u16 = 0x3F8;
-
-const BACKGROUND: [u8; 3] = [0x20, 0x40, 0x80];
-const FOREGROUND: [u8; 3] = [0xFF, 0xFF, 0xFF];
 
 unsafe fn serial_write_byte(byte: u8) {
     unsafe {
@@ -35,6 +32,8 @@ fn serial_write(message: &[u8]) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
+    serial_write(b"!!! KERNEL _START REACHED !!!\r\n");
+    
     unsafe {
         asm!("cli");
     }
@@ -63,35 +62,10 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         Framebuffer::from_boot_info(boot_info)
     };
 
-    serial_write(b"Clearing framebuffer...\r\n");
+    serial_write(b"Rendering Mentacore boot UI...\r\n");
 
     unsafe {
-        framebuffer.clear(BACKGROUND);
-    }
-
-    serial_write(b"Drawing kernel text...\r\n");
-
-    unsafe {
-        framebuffer.draw_string(
-            480,
-            300,
-            b"MENTACORE KERNEL OK",
-            FOREGROUND,
-        );
-
-        framebuffer.draw_string(
-            500,
-            320,
-            b"1280X800",
-            FOREGROUND,
-        );
-
-        framebuffer.draw_string(
-            500,
-            340,
-            b"BGR",
-            FOREGROUND,
-        );
+        boot_ui::render(&mut framebuffer);
     }
 
     serial_write(b"DISPLAY OK\r\n");

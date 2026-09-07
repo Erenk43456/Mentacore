@@ -1,6 +1,14 @@
-use mentacore_boot_protocol::BootInfo;
+use core::convert::Infallible;
 
-use super::font::{glyph, FONT_HEIGHT, FONT_WIDTH};
+use embedded_graphics::{
+    draw_target::DrawTarget,
+    geometry::{OriginDimensions, Size},
+    pixelcolor::Rgb888,
+    prelude::*,
+    Pixel,
+};
+
+use mentacore_boot_protocol::BootInfo;
 
 pub struct Framebuffer {
     address: *mut u8,
@@ -23,61 +31,11 @@ impl Framebuffer {
         }
     }
 
-    pub unsafe fn clear(&mut self, color: [u8; 3]) {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                unsafe {
-                    self.write_pixel(x, y, color);
-                }
-            }
-        }
-    }
-
-    pub unsafe fn draw_char(
-        &mut self,
-        x: usize,
-        y: usize,
-        character: u8,
-        color: [u8; 3],
-    ) {
-        let glyph = glyph(character);
-
-        for row in 0..FONT_HEIGHT {
-            let bits = glyph[row];
-
-            for col in 0..FONT_WIDTH {
-                if bits & (1 << (7 - col)) != 0 {
-                    unsafe {
-                        self.write_pixel(x + col, y + row, color);
-                    }
-                }
-            }
-        }
-    }
-
-    pub unsafe fn draw_string(
-        &mut self,
-        x: usize,
-        y: usize,
-        text: &[u8],
-        color: [u8; 3],
-    ) {
-        let mut cursor_x = x;
-
-        for &character in text {
-            unsafe {
-                self.draw_char(cursor_x, y, character, color);
-            }
-
-            cursor_x += FONT_WIDTH;
-        }
-    }
-
     unsafe fn write_pixel(
         &mut self,
         x: usize,
         y: usize,
-        color: [u8; 3],
+        color: Rgb888,
     ) {
         if x >= self.width || y >= self.height {
             return;
@@ -89,15 +47,19 @@ impl Framebuffer {
             return;
         }
 
+        let red = color.r();
+        let green = color.g();
+        let blue = color.b();
+
         let pixel = match self.format {
             // RGB
-            0 => [color[0], color[1], color[2], 0],
+            0 => [red, green, blue, 0],
 
             // BGR
-            1 => [color[2], color[1], color[0], 0],
+            1 => [blue, green, red, 0],
 
             // Bitmask
-            2 => [color[0], color[1], color[2], 0],
+            2 => [red, green, blue, 0],
 
             // BltOnly
             3 => return,
@@ -106,10 +68,59 @@ impl Framebuffer {
         };
 
         unsafe {
-            self.address.add(offset).write_volatile(pixel[0]);
-            self.address.add(offset + 1).write_volatile(pixel[1]);
-            self.address.add(offset + 2).write_volatile(pixel[2]);
-            self.address.add(offset + 3).write_volatile(pixel[3]);
+            self.address
+                .add(offset)
+                .write_volatile(pixel[0]);
+
+            self.address
+                .add(offset + 1)
+                .write_volatile(pixel[1]);
+
+            self.address
+                .add(offset + 2)
+                .write_volatile(pixel[2]);
+
+            self.address
+                .add(offset + 3)
+                .write_volatile(pixel[3]);
         }
+    }
+}
+
+impl OriginDimensions for Framebuffer {
+    fn size(&self) -> Size {
+        Size::new(
+            self.width as u32,
+            self.height as u32,
+        )
+    }
+}
+
+impl DrawTarget for Framebuffer {
+    type Color = Rgb888;
+    type Error = Infallible;
+
+    fn draw_iter<I>(
+        &mut self,
+        pixels: I,
+    ) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Self::Color>>,
+    {
+        for Pixel(point, color) in pixels {
+            if point.x < 0 || point.y < 0 {
+                continue;
+            }
+
+            unsafe {
+                self.write_pixel(
+                    point.x as usize,
+                    point.y as usize,
+                    color,
+                );
+            }
+        }
+
+        Ok(())
     }
 }
