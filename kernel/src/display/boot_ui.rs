@@ -11,7 +11,6 @@ use super::{
     components::{
         Header,
         InfoRow,
-        Status,
         StatusIndicator,
         TextLabel,
         TextStyle,
@@ -20,10 +19,15 @@ use super::{
     Framebuffer,
 };
 
+use crate::boot_state::BootState;
+
 const CONTENT_WIDTH: u32 = 560;
 const INFO_WIDTH: u32 = 440;
 
-pub fn render(framebuffer: &mut Framebuffer) {
+pub fn render(
+    framebuffer: &mut Framebuffer,
+    state: BootState,
+) {
     let layout = BootLayout::new(framebuffer);
     let screen = layout.screen();
 
@@ -76,7 +80,7 @@ pub fn render(framebuffer: &mut Framebuffer) {
             layout.status_y(),
         ),
         6,
-        Status::Ready,
+        state.status(),
     );
 
     status.draw(framebuffer);

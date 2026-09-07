@@ -5,4 +5,5 @@ mod components;
 mod framebuffer;
 mod geometry;
 
+pub use components::Status;
 pub use framebuffer::Framebuffer;

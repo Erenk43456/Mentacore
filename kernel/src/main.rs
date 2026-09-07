@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod boot_state;
 mod display;
 
 use core::arch::asm;
@@ -8,6 +9,8 @@ use core::panic::PanicInfo;
 
 use display::{boot_ui, Framebuffer};
 use mentacore_boot_protocol::BootInfo;
+
+use boot_state::BootState;
 
 const COM1: u16 = 0x3F8;
 
@@ -64,7 +67,10 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"Rendering Mentacore boot UI...\r\n");
 
-    boot_ui::render(&mut framebuffer);
+    boot_ui::render(
+        &mut framebuffer,
+        BootState::Ready,
+    );
 
     serial_write(b"DISPLAY OK\r\n");
 
