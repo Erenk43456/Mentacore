@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 uefi = { version = "0.40.0", features = ["logger", "panic_handler", "alloc", "global_allocator"] }
 elf = { version = "0.8", default-features = false }
+mentacore-boot-protocol = { path = "../boot_protocol" }

@@ -41,6 +41,7 @@ name = "mentacore-bootloader"
 version = "0.1.0"
 dependencies = [
  "elf",
+ "mentacore-boot-protocol",
  "uefi",
 ]
 

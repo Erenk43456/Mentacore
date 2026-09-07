@@ -82,12 +82,13 @@ if (-not (Test-Path $VarsFile)) {
 }
 
 & $Qemu `
-    -machine q35 `
-    -m 512M `
-    -drive "if=pflash,format=raw,readonly=on,file=$FirmwareCode" `
-    -drive "if=pflash,format=raw,file=$VarsFile" `
-    -drive "file=fat:rw:$EspRoot,format=raw" `
-    -boot order=c
+    "-machine" "q35" `
+    "-m" "512M" `
+    "-drive" "if=pflash,format=raw,readonly=on,file=$FirmwareCode" `
+    "-drive" "if=pflash,format=raw,file=$VarsFile" `
+    "-drive" "file=fat:rw:$EspRoot,format=raw" `
+    "-boot" "order=c" `
+    "-serial" "stdio"
 
 $ExitCode = $LASTEXITCODE
 
