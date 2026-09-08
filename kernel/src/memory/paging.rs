@@ -460,72 +460,164 @@ fn map_heap(
         return Err(());
     }
 
-    let page_count =
-        (size + PAGE_SIZE - 1) / PAGE_SIZE;
+    if virtual_start & (PAGE_SIZE - 1) != 0 {
+        return Err(());
+    }
+
+    let heap_end = virtual_start
+        .checked_add(size)
+        .ok_or(())?;
+
+    let first_pd_index =
+        ((virtual_start >> 21) & 0x1ff) as usize;
+
+    let last_pd_index =
+        ((heap_end - 1) >> 21) & 0x1ff;
+
+    if last_pd_index < first_pd_index as u64 {
+        return Err(());
+    }
 
     let pml4_index =
         ((virtual_start >> 39) & 0x1ff) as usize;
 
-    let pdpt_frame =
-        allocator.allocate_frame().ok_or(())?;
+    let pdpt = if unsafe {
+        (*pml4).entries[pml4_index] & PRESENT
+    } != 0 {
+        (unsafe {
+            (*pml4).entries[pml4_index]
+        } & 0x000f_ffff_ffff_f000) as *mut PageTable
+    } else {
+        let pdpt_frame =
+            allocator.allocate_frame().ok_or(())?;
 
-    let pdpt =
-        pdpt_frame.start_address as *mut PageTable;
+        let pdpt =
+            pdpt_frame.start_address as *mut PageTable;
 
-    unsafe {
-        (*pdpt).zero();
+        unsafe {
+            (*pdpt).zero();
 
-        (*pml4).entries[pml4_index] =
-            pdpt_frame.start_address
-            | PRESENT
-            | WRITABLE;
-    }
+            (*pml4).entries[pml4_index] =
+                pdpt_frame.start_address
+                | PRESENT
+                | WRITABLE;
+        }
+
+        pdpt
+    };
 
     let pdpt_index =
         ((virtual_start >> 30) & 0x1ff) as usize;
 
-    let pd_frame =
-        allocator.allocate_frame().ok_or(())?;
-
-    let pd =
-        pd_frame.start_address as *mut PageTable;
-
-    unsafe {
-        (*pd).zero();
-
-        (*pdpt).entries[pdpt_index] =
-            pd_frame.start_address
-            | PRESENT
-            | WRITABLE;
-    }
-
-    let pd_index =
-        ((virtual_start >> 21) & 0x1ff) as usize;
-
-    let pt_frame =
-        allocator.allocate_frame().ok_or(())?;
-
-    let pt =
-        pt_frame.start_address as *mut PageTable;
-
-    unsafe {
-        (*pt).zero();
-
-        (*pd).entries[pd_index] =
-            pt_frame.start_address
-            | PRESENT
-            | WRITABLE;
-    }
-
-    for page_index in 0..page_count {
-        let frame =
+    let pd = if unsafe {
+        (*pdpt).entries[pdpt_index] & PRESENT
+    } != 0 {
+        (unsafe {
+            (*pdpt).entries[pdpt_index]
+        } & 0x000f_ffff_ffff_f000) as *mut PageTable
+    } else {
+        let pd_frame =
             allocator.allocate_frame().ok_or(())?;
 
+        let pd =
+            pd_frame.start_address as *mut PageTable;
+
         unsafe {
-            (*pt).entries[page_index as usize] =
-                frame.start_address
+            (*pd).zero();
+
+            (*pdpt).entries[pdpt_index] =
+                pd_frame.start_address
                 | PRESENT
                 | WRITABLE;
+        }
+
+        pd
+    };
+
+    let first_region =
+        virtual_start / HUGE_PAGE_SIZE;
+
+    let last_region =
+        (heap_end - 1) / HUGE_PAGE_SIZE;
+
+    for region in first_region..=last_region {
+        let pd_index =
+            (region % ENTRY_COUNT as u64) as usize;
+
+        let region_start =
+            region * HUGE_PAGE_SIZE;
+
+        let region_end =
+            region_start
+                .checked_add(HUGE_PAGE_SIZE)
+                .ok_or(())?;
+
+        let map_start =
+            core::cmp::max(
+                virtual_start,
+                region_start,
+            );
+
+        let map_end =
+            core::cmp::min(
+                heap_end,
+                region_end,
+            );
+
+        if map_start >= map_end {
+            continue;
+        }
+
+        let pt = if unsafe {
+            (*pd).entries[pd_index] & PRESENT
+        } != 0 {
+            let entry =
+                unsafe {
+                    (*pd).entries[pd_index]
+                };
+
+            if entry & HUGE_PAGE != 0 {
+                return Err(());
+            }
+
+            (entry & 0x000f_ffff_ffff_f000)
+                as *mut PageTable
+        } else {
+            let pt_frame =
+                allocator.allocate_frame().ok_or(())?;
+
+            let pt =
+                pt_frame.start_address as *mut PageTable;
+
+            unsafe {
+                (*pt).zero();
+
+                (*pd).entries[pd_index] =
+                    pt_frame.start_address
+                    | PRESENT
+                    | WRITABLE;
+            }
+
+            pt
+        };
+
+        let first_page =
+            (map_start - region_start) / PAGE_SIZE;
+
+        let last_page =
+            (map_end - region_start + PAGE_SIZE - 1)
+                / PAGE_SIZE;
+
+        for page_index in first_page..last_page {
+            let frame =
+                allocator.allocate_frame().ok_or(())?;
+
+            unsafe {
+                (*pt).entries[page_index as usize] =
+                    frame.start_address
+                    | PRESENT
+                    | WRITABLE;
+            }
         }
     }
 

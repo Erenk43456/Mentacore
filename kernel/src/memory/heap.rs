@@ -3,7 +3,7 @@ use core::ptr::null_mut;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 pub const HEAP_START: u64 = 0xFFFF_8000_0000_0000;
-pub const HEAP_SIZE: u64 = 1024 * 1024;
+pub const HEAP_SIZE: u64 = 16 * 1024 * 1024;
 
 struct BumpAllocator {
     next: AtomicU64,
