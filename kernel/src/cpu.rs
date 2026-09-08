@@ -182,6 +182,22 @@ struct Gdt {
     entries: [u64; 5],
 }
 
+#[repr(align(16))]
+struct Stack<const SIZE: usize> {
+    data: [u8; SIZE],
+}
+
+const KERNEL_STACK_SIZE: usize = 16 * 1024;
+const IST1_STACK_SIZE: usize = 16 * 1024;
+
+static mut KERNEL_STACK: Stack<KERNEL_STACK_SIZE> = Stack {
+    data: [0; KERNEL_STACK_SIZE],
+};
+
+static mut IST1_STACK: Stack<IST1_STACK_SIZE> = Stack {
+    data: [0; IST1_STACK_SIZE],
+};
+
 static mut TSS: Tss = Tss::new();
 
 static mut GDT: Gdt = Gdt {
@@ -216,6 +232,45 @@ fn write_tss_descriptor(index: usize, descriptor: TssDescriptor) {
         GDT.entries[index + 1] =
             (descriptor.base_upper as u64)
             | ((descriptor.reserved as u64) << 32);
+    }
+}
+
+fn initialize_tss_stacks() {
+    let kernel_stack_top =
+        core::ptr::addr_of!(KERNEL_STACK) as u64
+            + KERNEL_STACK_SIZE as u64;
+
+    let ist1_stack_top =
+        core::ptr::addr_of!(IST1_STACK) as u64
+            + IST1_STACK_SIZE as u64;
+
+    unsafe {
+        let tss_ptr =
+            core::ptr::addr_of_mut!(TSS) as *mut u8;
+
+        core::ptr::write_unaligned(
+            tss_ptr.add(4) as *mut u64,
+            kernel_stack_top,
+        );
+
+        core::ptr::write_unaligned(
+            tss_ptr.add(36) as *mut u64,
+            ist1_stack_top,
+        );
+    }
+}
+
+pub fn ist1_stack_top() -> u64 {
+    core::ptr::addr_of!(IST1_STACK) as u64
+        + IST1_STACK_SIZE as u64
+}
+
+pub fn tss_ist1() -> u64 {
+    unsafe {
+        core::ptr::read_unaligned(
+            (core::ptr::addr_of!(TSS) as *const u8).add(36)
+                as *const u64,
+        )
     }
 }
 
@@ -269,6 +324,8 @@ pub fn init() {
         2,
         GdtEntry::data(),
     );
+
+    initialize_tss_stacks();
 
     let tss_descriptor =
         TssDescriptor::new(

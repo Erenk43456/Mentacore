@@ -39,6 +39,54 @@ fn serial_write_hex(value: u64) {
     }
 }
 
+fn debug_ist1_stack() {
+    let expected = crate::cpu::ist1_stack_top();
+    let actual = crate::cpu::tss_ist1();
+
+    serial_write(b"IST1 expected top: ");
+    serial_write_hex(expected);
+    serial_write(b"\r\n");
+
+    serial_write(b"TSS IST1: ");
+    serial_write_hex(actual);
+    serial_write(b"\r\n");
+
+    if expected == actual {
+        serial_write(b"IST1 TSS CONFIG OK\r\n");
+    } else {
+        serial_write(b"IST1 TSS CONFIG FAILED\r\n");
+    }
+
+    unsafe {
+        let idt_entry =
+            core::ptr::addr_of!(IDT[8])
+                as *const u8;
+
+        // options field is at byte offset 4.
+        let options =
+            core::ptr::read_unaligned(
+                idt_entry.add(4) as *const u16
+            );
+
+        serial_write(b"IDT[8] options: ");
+        serial_write_hex(options as u64);
+        serial_write(b"\r\n");
+
+        let ist =
+            (options & 0x0007) as u8;
+
+        serial_write(b"IDT[8] IST: ");
+        serial_write_hex(ist as u64);
+        serial_write(b"\r\n");
+
+        if ist == 1 {
+            serial_write(b"IDT DOUBLE FAULT IST CONFIG OK\r\n");
+        } else {
+            serial_write(b"IDT DOUBLE FAULT IST CONFIG FAILED\r\n");
+        }
+    }
+}
+
 #[repr(C, packed)]
 struct IdtEntry {
     offset_low: u16,
@@ -65,6 +113,7 @@ impl IdtEntry {
         &mut self,
         handler: unsafe extern "C" fn() -> !,
         selector: u16,
+        ist: u8,
     ) {
         let address = handler as u64;
 
@@ -72,8 +121,8 @@ impl IdtEntry {
 
         self.selector = selector;
 
-        // Present + interrupt gate
-        self.options = 0x8E00;
+        // Present + interrupt gate + IST index.
+        self.options = 0x8E00 | ((ist & 0x07) as u16);
 
         self.offset_mid = (address >> 16) as u16;
 
@@ -180,6 +229,114 @@ extern "C" fn invalid_opcode_dispatch(
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
+        serial_write(b"\r\n");
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn double_fault_entry() -> ! {
+    core::arch::naked_asm!(
+        "cli",
+
+        // CPU'nun IST1'e geçtikten sonraki RSP'sini
+        // RAX üzerinde geçici olarak sakla.
+        "mov rax, rsp",
+
+        "push rax",
+        "push rcx",
+        "push rdx",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+
+        "mov rdi, rsp",
+
+        // CPU-pushed #DF error code
+        "mov rsi, [rsp + 72]",
+
+        // İlk push edilen RAX = CPU'nun IST1 sonrası RSP'si.
+        "mov rdx, [rsp + 64]",
+
+        "call {handler}",
+
+        handler = sym double_fault_dispatch,
+    );
+}
+
+extern "C" fn double_fault_dispatch(
+    register_frame: *const u64,
+    error_code: u64,
+    cpu_rsp: u64,
+) -> ! {
+    serial_write(b"\r\n");
+    serial_write(b"================================\r\n");
+    serial_write(b"       DOUBLE FAULT (#DF)\r\n");
+    serial_write(b"================================\r\n");
+
+    let ist1_top =
+        crate::cpu::ist1_stack_top();
+
+    let ist1_start =
+        ist1_top - 16 * 1024;
+
+    serial_write(b"CPU RSP after IST switch: ");
+    serial_write_hex(cpu_rsp);
+    serial_write(b"\r\n");
+
+    serial_write(b"IST1 start: ");
+    serial_write_hex(ist1_start);
+    serial_write(b"\r\n");
+
+    serial_write(b"IST1 top: ");
+    serial_write_hex(ist1_top);
+    serial_write(b"\r\n");
+
+    if cpu_rsp >= ist1_start
+        && cpu_rsp <= ist1_top
+    {
+        serial_write(
+            b"DOUBLE FAULT IST1 STACK OK\r\n"
+        );
+    } else {
+        serial_write(
+            b"DOUBLE FAULT IST1 STACK FAILED\r\n"
+        );
+    }
+
+    serial_write(b"Error code: ");
+    serial_write_hex(error_code);
+    serial_write(b"\r\n");
+
+    unsafe {
+        let instruction_pointer =
+            *((register_frame as *const u8).add(80)
+                as *const u64);
+
+        let code_segment =
+            *((register_frame as *const u8).add(88)
+                as *const u64);
+
+        let rflags =
+            *((register_frame as *const u8).add(96)
+                as *const u64);
+
+        serial_write(b"Instruction pointer: ");
+        serial_write_hex(instruction_pointer);
+        serial_write(b"\r\n");
+
+        serial_write(b"CS: ");
+        serial_write_hex(code_segment);
+        serial_write(b"\r\n");
+
+        serial_write(b"RFLAGS: ");
+        serial_write_hex(rflags);
         serial_write(b"\r\n");
     }
 
@@ -489,26 +646,37 @@ pub unsafe fn init(
         IDT[0].set_handler(
             divide_error_entry,
             code_segment,
+            0,
         );
 
         IDT[6].set_handler(
             invalid_opcode_entry,
             code_segment,
+            0,
+        );
+
+        IDT[8].set_handler(
+            double_fault_entry,
+            code_segment,
+            1,
         );
 
         IDT[13].set_handler(
             general_protection_entry,
             code_segment,
+            0,
         );
 
         IDT[14].set_handler(
             page_fault_entry,
             code_segment,
+            0,
         );
 
         IDT[32].set_handler(
             timer_irq_entry,
             code_segment,
+            0,
         );
 
         let idt_pointer = IdtPointer {
@@ -523,5 +691,7 @@ pub unsafe fn init(
             in(reg) &idt_pointer,
             options(readonly, nostack, preserves_flags)
         );
+
+        debug_ist1_stack();
     }
 }
