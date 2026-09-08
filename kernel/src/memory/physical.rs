@@ -3,6 +3,32 @@ use super::memory_map::MemoryMap;
 const PAGE_SIZE: u64 = 4096;
 const EFI_CONVENTIONAL_MEMORY: u32 = 7;
 
+const BITS_PER_BYTE: u64 = 8;
+
+pub fn frame_count_for_address(address: u64) -> Option<u64> {
+    let frame_count = address
+        .checked_add(PAGE_SIZE - 1)?
+        / PAGE_SIZE;
+
+    Some(frame_count)
+}
+
+pub fn bitmap_size_bytes(frame_count: u64) -> Option<u64> {
+    Some(
+        frame_count
+            .checked_add(BITS_PER_BYTE - 1)?
+            / BITS_PER_BYTE
+    )
+}
+
+pub fn bitmap_page_count(frame_count: u64) -> Option<u64> {
+    let bytes = bitmap_size_bytes(frame_count)?;
+
+    bytes
+        .checked_add(PAGE_SIZE - 1)
+        .map(|value| value / PAGE_SIZE)
+}
+
 #[derive(Clone, Copy)]
 pub struct Frame {
     pub start_address: u64,

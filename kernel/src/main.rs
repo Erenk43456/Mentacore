@@ -136,6 +136,47 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     serial_write_hex(memory_map.descriptor_count() as u64);
     serial_write(b"\r\n");
 
+    let frame_count =
+        match memory::physical::frame_count_for_address(
+            highest_conventional_address
+        ) {
+            Some(count) => count,
+            None => {
+                serial_write(b"Failed to calculate frame count.\r\n");
+                loop {}
+            }
+        };
+
+    let bitmap_size =
+        match memory::physical::bitmap_size_bytes(frame_count) {
+            Some(size) => size,
+            None => {
+                serial_write(b"Failed to calculate bitmap size.\r\n");
+                loop {}
+            }
+        };
+
+    let bitmap_pages =
+        match memory::physical::bitmap_page_count(frame_count) {
+            Some(pages) => pages,
+            None => {
+                serial_write(b"Failed to calculate bitmap page count.\r\n");
+                loop {}
+            }
+        };
+
+    serial_write(b"Physical frame count: ");
+    serial_write_hex(frame_count);
+    serial_write(b"\r\n");
+
+    serial_write(b"Bitmap size: ");
+    serial_write_hex(bitmap_size);
+    serial_write(b" bytes\r\n");
+
+    serial_write(b"Bitmap pages: ");
+    serial_write_hex(bitmap_pages);
+    serial_write(b"\r\n");
+
     for index in 0..memory_map.descriptor_count() {
         let descriptor = match unsafe {
             memory_map.descriptor(index)
