@@ -1,7 +1,4 @@
-use super::memory_map::MemoryMap;
-
 const PAGE_SIZE: u64 = 4096;
-const EFI_CONVENTIONAL_MEMORY: u32 = 7;
 
 const BITS_PER_BYTE: u64 = 8;
 
@@ -46,61 +43,194 @@ impl Frame {
     }
 }
 
-pub struct PhysicalFrameAllocator<'a> {
-    memory_map: MemoryMap<'a>,
-    current_descriptor: usize,
-    next_frame: u64,
-    remaining_frames: u64,
+pub struct FrameBitmap {
+    address: u64,
+    frame_count: u64,
+}
+
+impl FrameBitmap {
+    pub unsafe fn new(
+        address: u64,
+        frame_count: u64,
+    ) -> Option<Self> {
+        if address & (PAGE_SIZE - 1) != 0 {
+            return None;
+        }
+
+        if frame_count == 0 {
+            return None;
+        }
+
+        Some(Self {
+            address,
+            frame_count,
+        })
+    }
+
+    fn byte_ptr(&self, byte_index: u64) -> *mut u8 {
+        (self.address + byte_index) as *mut u8
+    }
+
+    fn bit_position(frame: u64) -> (u64, u8) {
+        let byte_index = frame / BITS_PER_BYTE;
+        let bit_index = (frame % BITS_PER_BYTE) as u8;
+
+        (byte_index, bit_index)
+    }
+
+    pub unsafe fn clear_all(&mut self) {
+        let byte_count =
+            bitmap_size_bytes(self.frame_count)
+                .unwrap_or(0);
+
+        for index in 0..byte_count {
+            unsafe {
+                self.byte_ptr(index).write(0);
+            }
+        }
+    }
+
+    pub unsafe fn mark_used_range(
+        &mut self,
+        start_address: u64,
+        page_count: u64,
+    ) {
+        let first_frame =
+            start_address / PAGE_SIZE;
+
+        for frame in 0..page_count {
+            let frame_number =
+                match first_frame.checked_add(frame) {
+                    Some(value) => value,
+                    None => return,
+                };
+
+            unsafe {
+                self.set(frame_number);
+            }
+        }
+    }
+
+    pub unsafe fn mark_free_range(
+        &mut self,
+        start_address: u64,
+        page_count: u64,
+    ) {
+        let first_frame =
+            start_address / PAGE_SIZE;
+
+        let end_frame =
+            match first_frame.checked_add(page_count) {
+                Some(value) => value,
+                None => return,
+            };
+
+        for frame_number in first_frame..end_frame {
+            if frame_number >= self.frame_count {
+                break;
+            }
+
+            let (byte_index, bit_index) =
+                Self::bit_position(frame_number);
+
+            unsafe {
+                let ptr = self.byte_ptr(byte_index);
+                let value = ptr.read();
+
+                ptr.write(
+                    value & !(1u8 << bit_index)
+                );
+            }
+        }
+    }
+
+    pub unsafe fn set(&mut self, frame: u64) {
+        if frame >= self.frame_count {
+            return;
+        }
+
+        let (byte_index, bit_index) =
+            Self::bit_position(frame);
+
+        unsafe {
+            let ptr = self.byte_ptr(byte_index);
+            let value = ptr.read();
+
+            ptr.write(
+                value | (1u8 << bit_index)
+            );
+        }
+    }
+
+    pub unsafe fn is_used(&self, frame: u64) -> bool {
+        if frame >= self.frame_count {
+            return true;
+        }
+
+        let (byte_index, bit_index) =
+            Self::bit_position(frame);
+
+        unsafe {
+            let value =
+                self.byte_ptr(byte_index).read();
+
+            (value & (1u8 << bit_index)) != 0
+        }
+    }
+
+    pub fn frame_count(&self) -> u64 {
+        self.frame_count
+    }
+
+    pub fn address(&self) -> u64 {
+        self.address
+    }
+}
+
+pub struct PhysicalFrameAllocator {
+    bitmap: FrameBitmap,
+    current_frame: u64,
     allocated_frames: u64,
 }
 
-impl<'a> PhysicalFrameAllocator<'a> {
-    pub fn new(memory_map: MemoryMap<'a>) -> Self {
+impl PhysicalFrameAllocator {
+    pub fn new(bitmap: FrameBitmap) -> Self {
         Self {
-            memory_map,
-            current_descriptor: 0,
-            next_frame: 0,
-            remaining_frames: 0,
+            bitmap,
+            current_frame: 0,
             allocated_frames: 0,
         }
     }
 
     pub fn allocate_frame(&mut self) -> Option<Frame> {
-        loop {
-            if self.remaining_frames > 0 {
-                let frame = Frame::new(self.next_frame)?;
+        while self.current_frame < self.bitmap.frame_count() {
+            let frame_number = self.current_frame;
 
-                self.next_frame += PAGE_SIZE;
-                self.remaining_frames -= 1;
+            self.current_frame += 1;
 
-                self.allocated_frames += 1;
-
-                return Some(frame);
-            }
-
-            if self.current_descriptor >= self.memory_map.descriptor_count() {
-                return None;
-            }
-
-            let descriptor = unsafe {
-                self.memory_map
-                    .descriptor(self.current_descriptor)?
+            let used = unsafe {
+                self.bitmap.is_used(frame_number)
             };
 
-            self.current_descriptor += 1;
-
-            if descriptor.ty != EFI_CONVENTIONAL_MEMORY {
+            if used {
                 continue;
             }
 
-            self.next_frame = descriptor.physical_start;
-            self.remaining_frames = descriptor.number_of_pages;
+            let address =
+                frame_number.checked_mul(PAGE_SIZE)?;
 
-            if self.next_frame == 0 && self.remaining_frames > 0 {
-                self.next_frame += PAGE_SIZE;
-                self.remaining_frames -= 1;
+            let frame = Frame::new(address)?;
+
+            unsafe {
+                self.bitmap.set(frame_number);
             }
+
+            self.allocated_frames += 1;
+
+            return Some(frame);
         }
+
+        None
     }
 
     pub fn allocated_count(&self) -> u64 {

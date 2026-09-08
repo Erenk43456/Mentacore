@@ -80,4 +80,59 @@ impl<'a> MemoryMap<'a> {
 
         highest
     }
+
+    pub fn find_conventional_region(
+        &self,
+        required_size: u64,
+    ) -> Option<u64> {
+        if required_size == 0 {
+            return None;
+        }
+
+        let required_size =
+            (required_size + 4095) & !4095;
+
+        // Physical address 0 is intentionally avoided.
+        const MIN_ADDRESS: u64 = 0x0010_0000;
+
+        for index in 0..self.descriptor_count() {
+            let descriptor = unsafe {
+                self.descriptor(index)?
+            };
+
+            if descriptor.ty != 7 {
+                continue;
+            }
+
+            let region_start =
+                descriptor.physical_start.max(MIN_ADDRESS);
+
+            let region_end =
+                descriptor
+                    .physical_start
+                    .checked_add(
+                        descriptor.number_of_pages.checked_mul(4096)?
+                    )?;
+
+            if region_end <= region_start {
+                continue;
+            }
+
+            let available_size =
+                region_end.checked_sub(region_start)?;
+
+            if available_size < required_size {
+                continue;
+            }
+
+            let bitmap_end =
+                region_start.checked_add(required_size)?;
+
+            if bitmap_end <= region_end {
+                return Some(region_start);
+            }
+        }
+
+        None
+    }
 }

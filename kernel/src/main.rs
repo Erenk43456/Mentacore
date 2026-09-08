@@ -177,6 +177,110 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     serial_write_hex(bitmap_pages);
     serial_write(b"\r\n");
 
+    let bitmap_address =
+        match memory_map.find_conventional_region(
+            bitmap_pages * memory::paging::PAGE_SIZE,
+        ) {
+            Some(address) => address,
+            None => {
+                serial_write(b"Failed to find bitmap region.\r\n");
+                loop {}
+            }
+        };
+
+    serial_write(b"Bitmap physical address: ");
+    serial_write_hex(bitmap_address);
+    serial_write(b"\r\n");
+
+    let mut frame_bitmap = unsafe {
+        match memory::physical::FrameBitmap::new(
+            bitmap_address,
+            frame_count,
+        ) {
+            Some(bitmap) => bitmap,
+            None => {
+                serial_write(b"Failed to create frame bitmap.\r\n");
+                loop {}
+            }
+        }
+    };
+
+    unsafe {
+        frame_bitmap.clear_all();
+
+        // Start with every physical frame marked as used.
+        for frame in 0..frame_count {
+            frame_bitmap.set(frame);
+        }
+
+        // UEFI Conventional Memory is available.
+        for index in 0..memory_map.descriptor_count() {
+            let descriptor = match memory_map.descriptor(index) {
+                Some(descriptor) => descriptor,
+                None => {
+                    serial_write(
+                        b"ERROR: Failed to read descriptor for bitmap\r\n"
+                    );
+
+                    loop {
+                        core::hint::spin_loop();
+                    }
+                }
+            };
+
+            if descriptor.ty == 7 {
+                frame_bitmap.mark_free_range(
+                    descriptor.physical_start,
+                    descriptor.number_of_pages,
+                );
+            }
+        }
+
+        // The bitmap's own physical pages must remain reserved.
+        let bitmap_frame =
+            bitmap_address / memory::paging::PAGE_SIZE;
+
+        for frame in 0..bitmap_pages {
+            frame_bitmap.set(bitmap_frame + frame);
+        }
+
+        // Physical frame 0 is permanently reserved.
+        frame_bitmap.set(0);
+    }
+
+    serial_write(b"Frame bitmap initialized.\r\n");
+
+    unsafe {
+        if !frame_bitmap.is_used(0) {
+            serial_write(b"ERROR: Frame 0 is not reserved\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+
+        let bitmap_first_frame =
+            bitmap_address / memory::paging::PAGE_SIZE;
+
+        if !frame_bitmap.is_used(bitmap_first_frame) {
+            serial_write(b"ERROR: Bitmap frame is not reserved\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+
+        let bitmap_last_frame =
+            bitmap_first_frame + bitmap_pages - 1;
+
+        if !frame_bitmap.is_used(bitmap_last_frame) {
+            serial_write(b"ERROR: Bitmap last frame is not reserved\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(b"Frame bitmap ownership checks OK.\r\n");
+
     for index in 0..memory_map.descriptor_count() {
         let descriptor = match unsafe {
             memory_map.descriptor(index)
@@ -211,7 +315,8 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"Initializing physical frame allocator...\r\n");
 
-    let mut allocator = PhysicalFrameAllocator::new(memory_map);
+    let mut allocator =
+        PhysicalFrameAllocator::new(frame_bitmap);
 
     serial_write(b"Physical frame allocator OK.\r\n");
 
