@@ -369,4 +369,8 @@ impl PhysicalFrameAllocator {
     pub fn total_allocations(&self) -> u64 {
         self.total_allocations
     }
+
+    pub fn frame_count(&self) -> u64 {
+        self.bitmap.frame_count()
+    }
 }

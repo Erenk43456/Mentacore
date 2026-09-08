@@ -459,6 +459,84 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"PHYSICAL FRAME COUNTER TEST OK\r\n");
 
+    serial_write(b"Testing physical frame double-free protection...\r\n");
+
+    let double_free_frame = match allocator.allocate_frame() {
+        Some(frame) => frame,
+        None => {
+            serial_write(b"ERROR: Double-free test allocation failed\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    };
+
+    match allocator.free_frame(double_free_frame) {
+        Ok(()) => {}
+        Err(()) => {
+            serial_write(b"ERROR: First free failed\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    // The second free must fail.
+    if allocator.free_frame(double_free_frame).is_ok() {
+        serial_write(b"ERROR: Double-free was accepted\r\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(b"  Double-free correctly rejected.\r\n");
+    serial_write(b"PHYSICAL FRAME DOUBLE-FREE TEST OK\r\n");
+
+    serial_write(b"Testing invalid physical frame rejection...\r\n");
+
+    let unaligned_frame =
+        memory::physical::Frame {
+            start_address: 0x1234,
+        };
+
+    if allocator.free_frame(unaligned_frame).is_ok() {
+        serial_write(b"ERROR: Unaligned frame was accepted\r\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(b"  Unaligned frame correctly rejected.\r\n");
+
+    let out_of_range_address =
+        match allocator
+            .frame_count()
+            .checked_mul(memory::paging::PAGE_SIZE)
+        {
+            Some(address) => address,
+            None => {
+                serial_write(b"ERROR: Failed to calculate invalid frame address\r\n");
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        };
+
+    let out_of_range_frame =
+        memory::physical::Frame {
+            start_address: out_of_range_address,
+        };
+
+    if allocator.free_frame(out_of_range_frame).is_ok() {
+        serial_write(b"ERROR: Out-of-range frame was accepted\r\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(b"  Out-of-range frame correctly rejected.\r\n");
+    serial_write(b"PHYSICAL FRAME INVALID TEST OK\r\n");
+
     serial_write(b"Allocated frames before paging: ");
     serial_write_hex(allocator.allocated_count());
     serial_write(b"\r\n");
