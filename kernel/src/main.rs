@@ -11,6 +11,7 @@ use alloc::{
 
 mod boot_state;
 mod display;
+mod interrupts;
 mod memory;
 
 use core::arch::asm;
@@ -183,6 +184,14 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     unsafe {
         memory::heap::init();
     }
+
+    serial_write(b"Initializing interrupt system...\r\n");
+
+    unsafe {
+        interrupts::init();
+    }
+
+    serial_write(b"Interrupt system initialized.\r\n");
 
     serial_write(b"Kernel heap initialized.\r\n");
 

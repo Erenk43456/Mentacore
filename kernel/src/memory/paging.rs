@@ -1,4 +1,5 @@
 use super::physical::PhysicalFrameAllocator;
+use super::heap::{HEAP_SIZE, HEAP_START};
 use mentacore_boot_protocol::BootInfo;
 
 const PAGE_SIZE: u64 = 4096;
@@ -165,8 +166,8 @@ pub unsafe fn init(
     map_heap(
         pml4,
         allocator,
-        0xFFFF_8000_0000_0000,
-        1024 * 1024,
+        HEAP_START,
+        HEAP_SIZE,
     )?;
 
     unsafe {
@@ -464,23 +465,34 @@ fn map_heap(
         return Err(());
     }
 
-    let heap_end = virtual_start
-        .checked_add(size)
-        .ok_or(())?;
+    let virtual_end =
+        virtual_start.checked_add(size).ok_or(())?;
 
-    let first_pd_index =
-        ((virtual_start >> 21) & 0x1ff) as usize;
+    if virtual_end <= virtual_start {
+        return Err(());
+    }
 
-    let last_pd_index =
-        ((heap_end - 1) >> 21) & 0x1ff;
-
-    if last_pd_index < first_pd_index as u64 {
+    if !is_canonical_address(virtual_start)
+        || !is_canonical_address(virtual_end - 1)
+    {
         return Err(());
     }
 
     let pml4_index =
         ((virtual_start >> 39) & 0x1ff) as usize;
 
+    let first_pdpt_index =
+        ((virtual_start >> 30) & 0x1ff) as usize;
+
+    let last_pdpt_index =
+        (((virtual_end - 1) >> 30) & 0x1ff) as usize;
+
+    // The heap must remain inside one PDPT entry.
+    if first_pdpt_index != last_pdpt_index {
+        return Err(());
+    }
+
+    // PML4 -> PDPT
     let pdpt = if unsafe {
         (*pml4).entries[pml4_index] & PRESENT
     } != 0 {
@@ -488,136 +500,94 @@ fn map_heap(
             (*pml4).entries[pml4_index]
         } & 0x000f_ffff_ffff_f000) as *mut PageTable
     } else {
-        let pdpt_frame =
+        let frame =
             allocator.allocate_frame().ok_or(())?;
 
-        let pdpt =
-            pdpt_frame.start_address as *mut PageTable;
+        let table =
+            frame.start_address as *mut PageTable;
 
         unsafe {
-            (*pdpt).zero();
+            (*table).zero();
 
             (*pml4).entries[pml4_index] =
-                pdpt_frame.start_address
+                frame.start_address
                 | PRESENT
                 | WRITABLE;
         }
 
-        pdpt
+        table
     };
 
-    let pdpt_index =
-        ((virtual_start >> 30) & 0x1ff) as usize;
-
+    // PDPT -> PD
     let pd = if unsafe {
-        (*pdpt).entries[pdpt_index] & PRESENT
+        (*pdpt).entries[first_pdpt_index] & PRESENT
     } != 0 {
-        (unsafe {
-            (*pdpt).entries[pdpt_index]
-        } & 0x000f_ffff_ffff_f000) as *mut PageTable
+        let entry = unsafe {
+            (*pdpt).entries[first_pdpt_index]
+        };
+
+        if entry & HUGE_PAGE != 0 {
+            return Err(());
+        }
+
+        (entry & 0x000f_ffff_ffff_f000)
+            as *mut PageTable
     } else {
-        let pd_frame =
+        let frame =
             allocator.allocate_frame().ok_or(())?;
 
-        let pd =
-            pd_frame.start_address as *mut PageTable;
+        let table =
+            frame.start_address as *mut PageTable;
 
         unsafe {
-            (*pd).zero();
+            (*table).zero();
 
-            (*pdpt).entries[pdpt_index] =
-                pd_frame.start_address
+            (*pdpt).entries[first_pdpt_index] =
+                frame.start_address
                 | PRESENT
                 | WRITABLE;
         }
 
-        pd
+        table
     };
 
-    let first_region =
-        virtual_start / HUGE_PAGE_SIZE;
+    let first_pd_index =
+        ((virtual_start >> 21) & 0x1ff) as usize;
 
-    let last_region =
-        (heap_end - 1) / HUGE_PAGE_SIZE;
+    let last_pd_index =
+        (((virtual_end - 1) >> 21) & 0x1ff) as usize;
 
-    for region in first_region..=last_region {
-        let pd_index =
-            (region % ENTRY_COUNT as u64) as usize;
+    // Reserve the page tables covering the heap.
+    //
+    // The PTs themselves are present, but their PTEs
+    // remain non-present. Physical heap frames will be
+    // allocated later by the page-fault handler.
+    for pd_index in first_pd_index..=last_pd_index {
+        let pd_entry = unsafe {
+            (*pd).entries[pd_index]
+        };
 
-        let region_start =
-            region * HUGE_PAGE_SIZE;
-
-        let region_end =
-            region_start
-                .checked_add(HUGE_PAGE_SIZE)
-                .ok_or(())?;
-
-        let map_start =
-            core::cmp::max(
-                virtual_start,
-                region_start,
-            );
-
-        let map_end =
-            core::cmp::min(
-                heap_end,
-                region_end,
-            );
-
-        if map_start >= map_end {
-            continue;
-        }
-
-        let pt = if unsafe {
-            (*pd).entries[pd_index] & PRESENT
-        } != 0 {
-            let entry =
-                unsafe {
-                    (*pd).entries[pd_index]
-                };
-
-            if entry & HUGE_PAGE != 0 {
+        if pd_entry & PRESENT != 0 {
+            if pd_entry & HUGE_PAGE != 0 {
                 return Err(());
             }
 
-            (entry & 0x000f_ffff_ffff_f000)
-                as *mut PageTable
-        } else {
-            let pt_frame =
-                allocator.allocate_frame().ok_or(())?;
+            continue;
+        }
 
-            let pt =
-                pt_frame.start_address as *mut PageTable;
+        let frame =
+            allocator.allocate_frame().ok_or(())?;
 
-            unsafe {
-                (*pt).zero();
+        let page_table =
+            frame.start_address as *mut PageTable;
 
-                (*pd).entries[pd_index] =
-                    pt_frame.start_address
-                    | PRESENT
-                    | WRITABLE;
-            }
+        unsafe {
+            (*page_table).zero();
 
-            pt
-        };
-
-        let first_page =
-            (map_start - region_start) / PAGE_SIZE;
-
-        let last_page =
-            (map_end - region_start + PAGE_SIZE - 1)
-                / PAGE_SIZE;
-
-        for page_index in first_page..last_page {
-            let frame =
-                allocator.allocate_frame().ok_or(())?;
-
-            unsafe {
-                (*pt).entries[page_index as usize] =
-                    frame.start_address
-                    | PRESENT
-                    | WRITABLE;
-            }
+            (*pd).entries[pd_index] =
+                frame.start_address
+                | PRESENT
+                | WRITABLE;
         }
     }
 
