@@ -161,6 +161,10 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"Physical frame allocator OK.\r\n");
 
+    serial_write(b"Allocated frames before paging: ");
+    serial_write_hex(allocator.allocated_count());
+    serial_write(b"\r\n");
+
     serial_write(b"Initializing paging...\r\n");
 
     match unsafe {
@@ -168,6 +172,10 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     } {
         Ok(()) => {
             serial_write(b"Paging initialized.\r\n");
+            
+            serial_write(b"Allocated frames after paging: ");
+            serial_write_hex(allocator.allocated_count());
+            serial_write(b"\r\n");
         }
 
         Err(()) => {

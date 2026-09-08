@@ -13,6 +13,7 @@ pub struct PhysicalFrameAllocator<'a> {
     current_descriptor: usize,
     next_frame: u64,
     remaining_frames: u64,
+    allocated_frames: u64,
 }
 
 impl<'a> PhysicalFrameAllocator<'a> {
@@ -22,6 +23,7 @@ impl<'a> PhysicalFrameAllocator<'a> {
             current_descriptor: 0,
             next_frame: 0,
             remaining_frames: 0,
+            allocated_frames: 0,
         }
     }
 
@@ -35,6 +37,8 @@ impl<'a> PhysicalFrameAllocator<'a> {
                 self.next_frame += PAGE_SIZE;
                 self.remaining_frames -= 1;
 
+                self.allocated_frames += 1;
+
                 return Some(frame);
             }
 
@@ -43,7 +47,8 @@ impl<'a> PhysicalFrameAllocator<'a> {
             }
 
             let descriptor = unsafe {
-                self.memory_map.descriptor(self.current_descriptor)?
+                self.memory_map
+                    .descriptor(self.current_descriptor)?
             };
 
             self.current_descriptor += 1;
@@ -60,5 +65,9 @@ impl<'a> PhysicalFrameAllocator<'a> {
                 self.remaining_frames -= 1;
             }
         }
+    }
+
+    pub fn allocated_count(&self) -> u64 {
+        self.allocated_frames
     }
 }
