@@ -350,12 +350,17 @@ unsafe fn map_page(
     };
 
     // PD -> PT
-    let pt = if unsafe {
-        (*pd).entries[pd_index] & PRESENT
-    } != 0 {
-        (unsafe {
-            (*pd).entries[pd_index]
-        } & 0x000f_ffff_ffff_f000) as *mut PageTable
+    let pd_entry = unsafe {
+        (*pd).entries[pd_index]
+    };
+
+    let pt = if pd_entry & PRESENT != 0 {
+        if pd_entry & HUGE_PAGE != 0 {
+            return Err(());
+        }
+
+        (pd_entry & 0x000f_ffff_ffff_f000)
+            as *mut PageTable
     } else {
         let frame =
             allocator.allocate_frame().ok_or(())?;
