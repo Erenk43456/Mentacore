@@ -688,6 +688,110 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         b"PAGING DUPLICATE MAP TEST OK\r\n"
     );
 
+    serial_write(
+        b"Testing virtual-to-physical mapping...\r\n"
+    );
+
+    let mapping_virtual =
+        0xFFFF_9000_0000_3000;
+
+    let mapping_frame =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => {
+                serial_write(
+                    b"ERROR: Failed to allocate mapping test frame\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        };
+
+    let mapping_physical =
+        mapping_frame.start_address;
+
+    let pml4 =
+        unsafe {
+            memory::paging::current_pml4()
+        };
+
+    unsafe {
+        match memory::paging::map_page(
+            pml4,
+            &mut allocator,
+            mapping_virtual,
+            mapping_physical,
+            memory::paging::PageFlags {
+                writable: true,
+                cache_disable: false,
+            },
+        ) {
+            Ok(()) => {}
+
+            Err(()) => {
+                serial_write(
+                    b"ERROR: Mapping test page failed\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        }
+    }
+
+    let virtual_ptr =
+        mapping_virtual as *mut u64;
+
+    unsafe {
+        virtual_ptr.write(
+            0xAABB_CCDD_1122_3344
+        );
+
+        if virtual_ptr.read()
+            != 0xAABB_CCDD_1122_3344
+        {
+            serial_write(
+                b"ERROR: Virtual mapping read/write failed\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Virtual address read/write OK.\r\n"
+    );
+
+    let physical_ptr =
+        mapping_physical as *const u64;
+
+    unsafe {
+        if physical_ptr.read()
+            != 0xAABB_CCDD_1122_3344
+        {
+            serial_write(
+                b"ERROR: Physical frame contents mismatch\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Physical frame contents match.\r\n"
+    );
+
+    serial_write(
+        b"PAGING MAPPING TEST OK\r\n"
+    );
+
     serial_write(b"Initializing kernel heap...\r\n");
 
     unsafe {
