@@ -1,4 +1,5 @@
 use core::arch::asm;
+use crate::memory::physical::PhysicalFrameAllocator;
 
 const COM1: u16 = 0x3F8;
 
@@ -89,10 +90,15 @@ struct IdtPointer {
 static mut IDT: [IdtEntry; 256] =
     [const { IdtEntry::missing() }; 256];
 
+static mut FRAME_ALLOCATOR: *mut () =
+    core::ptr::null_mut();
+
 #[unsafe(naked)]
 unsafe extern "C" fn page_fault_entry() -> ! {
     core::arch::naked_asm!(
         "cli",
+
+        // Save registers.
         "push rax",
         "push rcx",
         "push rdx",
@@ -102,10 +108,32 @@ unsafe extern "C" fn page_fault_entry() -> ! {
         "push r9",
         "push r10",
         "push r11",
+
+        // Arguments:
+        // RDI = register frame
+        // RSI = CPU error code
         "mov rdi, rsp",
         "mov rsi, [rsp + 72]",
+
         "call {handler}",
-        "ud2",
+
+        // Restore registers.
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rdi",
+        "pop rsi",
+        "pop rdx",
+        "pop rcx",
+        "pop rax",
+
+        // Remove CPU-pushed page-fault error code.
+        "add rsp, 8",
+        
+        // Return to the faulting instruction.
+        "iretq",
+
         handler = sym page_fault_dispatch,
     );
 }
@@ -113,7 +141,7 @@ unsafe extern "C" fn page_fault_entry() -> ! {
 extern "C" fn page_fault_dispatch(
     register_frame: *const u64,
     error_code: u64,
-) -> ! {
+) {
     let fault_address: u64;
 
     unsafe {
@@ -139,23 +167,122 @@ extern "C" fn page_fault_dispatch(
 
     unsafe {
         let instruction_pointer =
-            *((register_frame as *const u8).add(80)
-                as *const u64);
+            *((register_frame as *const u8).add(80) as *const u64);
+
+        let code_segment =
+            *((register_frame as *const u8).add(88) as *const u64);
+
+        let rflags =
+            *((register_frame as *const u8).add(96) as *const u64);
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
         serial_write(b"\r\n");
+
+        serial_write(b"CS: ");
+        serial_write_hex(code_segment);
+        serial_write(b"\r\n");
+
+        serial_write(b"RFLAGS: ");
+        serial_write_hex(rflags);
+        serial_write(b"\r\n");
+    }
+
+    // Bit 0 = 1:
+    // Page is present, but access was denied.
+    // This is NOT a demand-paging fault.
+    if error_code & 1 != 0 {
+        serial_write(b"Protection fault.\r\n");
+
+        loop {
+            core::hint::spin_loop();
+        }
     }
 
     serial_write(b"Page fault handler reached.\r\n");
 
-    loop {
-        core::hint::spin_loop();
+    let page_address =
+        fault_address & !(crate::memory::paging::PAGE_SIZE - 1);
+
+    if page_address < crate::memory::heap::HEAP_START
+        || page_address
+            >= crate::memory::heap::HEAP_START
+                + crate::memory::heap::HEAP_SIZE
+    {
+        serial_write(b"Page fault outside kernel heap.\r\n");
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    let allocator = unsafe {
+        &mut *(FRAME_ALLOCATOR as *mut PhysicalFrameAllocator)
+    };
+
+    let frame = match allocator.allocate_frame() {
+        Some(frame) => frame,
+
+        None => {
+            serial_write(b"Out of physical memory.\r\n");
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    };
+
+    serial_write(b"Allocated frame: ");
+    serial_write_hex(frame.start_address);
+    serial_write(b"\r\n");
+
+    let pml4 = unsafe {
+        crate::memory::paging::current_pml4()
+    };
+
+    match unsafe {
+        crate::memory::paging::map_page(
+            pml4,
+            allocator,
+            page_address,
+            frame.start_address,
+            crate::memory::paging::PageFlags {
+                writable: true,
+                cache_disable: false,
+            },
+        )
+    } {
+        Ok(()) => {
+            serial_write(b"Page mapped successfully.\r\n");
+
+            unsafe {
+                core::arch::asm!(
+                    "invlpg [{}]",
+                    in(reg) page_address,
+                    options(nostack, preserves_flags)
+                );
+            }
+
+            serial_write(b"TLB invalidated.\r\n");
+        }
+
+        Err(()) => {
+            serial_write(b"Page mapping failed.\r\n");
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
     }
 }
 
-pub unsafe fn init() {
+pub unsafe fn init(
+    allocator: &mut PhysicalFrameAllocator,
+) {
     unsafe {
+        FRAME_ALLOCATOR =
+            allocator as *mut PhysicalFrameAllocator as *mut ();
+
         let code_segment: u16;
 
         asm!(

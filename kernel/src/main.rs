@@ -188,7 +188,7 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     serial_write(b"Initializing interrupt system...\r\n");
 
     unsafe {
-        interrupts::init();
+        interrupts::init(&mut allocator);
     }
 
     serial_write(b"Interrupt system initialized.\r\n");

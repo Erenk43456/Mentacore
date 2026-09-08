@@ -2,7 +2,7 @@ use super::physical::PhysicalFrameAllocator;
 use super::heap::{HEAP_SIZE, HEAP_START};
 use mentacore_boot_protocol::BootInfo;
 
-const PAGE_SIZE: u64 = 4096;
+pub const PAGE_SIZE: u64 = 4096;
 const HUGE_PAGE_SIZE: u64 = 0x20_0000;
 
 const ENTRY_COUNT: usize = 512;
@@ -35,7 +35,7 @@ fn flags_to_entry(flags: PageFlags) -> u64 {
 }
 
 #[repr(align(4096))]
-struct PageTable {
+pub struct PageTable {
     entries: [u64; ENTRY_COUNT],
 }
 
@@ -323,7 +323,7 @@ fn is_valid_physical_address(address: u64) -> bool {
     (address >> 52) == 0
 }
 
-unsafe fn map_page(
+pub unsafe fn map_page(
     pml4: *mut PageTable,
     allocator: &mut PhysicalFrameAllocator,
     virtual_address: u64,
@@ -592,6 +592,20 @@ fn map_heap(
     }
 
     Ok(())
+}
+
+pub unsafe fn current_pml4() -> *mut PageTable {
+    let address: u64;
+
+    unsafe {
+        core::arch::asm!(
+            "mov {}, cr3",
+            out(reg) address,
+            options(nostack, preserves_flags)
+        );
+    }
+
+    (address & 0x000f_ffff_ffff_f000) as *mut PageTable
 }
 
 unsafe fn load_cr3(address: u64) {
