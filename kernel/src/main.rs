@@ -13,6 +13,7 @@ mod boot_state;
 mod display;
 mod interrupts;
 mod memory;
+mod hardware;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -1235,6 +1236,23 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"Interrupt system initialized.\r\n");
 
+    serial_write(b"Initializing PIC...\r\n");
+
+    unsafe {
+        hardware::pic::remap();
+        hardware::pic::enable_irq(0);
+    }
+
+    serial_write(b"PIC initialized.\r\n");
+
+    serial_write(b"Initializing PIT...\r\n");
+
+    unsafe {
+        hardware::pit::set_frequency(100);
+    }
+
+    serial_write(b"PIT initialized.\r\n");
+
     serial_write(b"Kernel heap initialized.\r\n");
 
     serial_write(b"Testing kernel heap...\r\n");
@@ -1314,6 +1332,14 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     );
 
     serial_write(b"DISPLAY OK\r\n");
+
+    serial_write(b"Enabling hardware interrupts...\r\n");
+
+    unsafe {
+        asm!("sti");
+    }
+
+    serial_write(b"Hardware interrupts enabled.\r\n");
 
     loop {
         core::hint::spin_loop();

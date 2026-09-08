@@ -1,4 +1,6 @@
 use core::arch::asm;
+use core::sync::atomic::{AtomicU64, Ordering};
+
 use crate::memory::physical::PhysicalFrameAllocator;
 
 const COM1: u16 = 0x3F8;
@@ -93,6 +95,150 @@ static mut IDT: [IdtEntry; 256] =
 static mut FRAME_ALLOCATOR: *mut () =
     core::ptr::null_mut();
 
+static TIMER_TICKS: AtomicU64 =
+    AtomicU64::new(0);
+
+#[unsafe(naked)]
+unsafe extern "C" fn divide_error_entry() -> ! {
+    core::arch::naked_asm!(
+        "cli",
+
+        "push rax",
+        "push rcx",
+        "push rdx",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+
+        "mov rdi, rsp",
+
+        "call {handler}",
+
+        handler = sym divide_error_dispatch,
+    );
+}
+
+extern "C" fn divide_error_dispatch(
+    register_frame: *const u64,
+) -> ! {
+    serial_write(b"\r\n");
+    serial_write(b"================================\r\n");
+    serial_write(b"       DIVIDE ERROR (#DE)\r\n");
+    serial_write(b"================================\r\n");
+
+    unsafe {
+        let instruction_pointer =
+            *((register_frame as *const u8).add(72) as *const u64);
+
+        serial_write(b"Instruction pointer: ");
+        serial_write_hex(instruction_pointer);
+        serial_write(b"\r\n");
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn invalid_opcode_entry() -> ! {
+    core::arch::naked_asm!(
+        "cli",
+
+        "push rax",
+        "push rcx",
+        "push rdx",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+
+        "mov rdi, rsp",
+
+        "call {handler}",
+
+        handler = sym invalid_opcode_dispatch,
+    );
+}
+
+extern "C" fn invalid_opcode_dispatch(
+    register_frame: *const u64,
+) -> ! {
+    serial_write(b"\r\n");
+    serial_write(b"================================\r\n");
+    serial_write(b"      INVALID OPCODE (#UD)\r\n");
+    serial_write(b"================================\r\n");
+
+    unsafe {
+        let instruction_pointer =
+            *((register_frame as *const u8).add(72) as *const u64);
+
+        serial_write(b"Instruction pointer: ");
+        serial_write_hex(instruction_pointer);
+        serial_write(b"\r\n");
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn general_protection_entry() -> ! {
+    core::arch::naked_asm!(
+        "cli",
+
+        "push rax",
+        "push rcx",
+        "push rdx",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+
+        "mov rdi, rsp",
+        "mov rsi, [rsp + 72]",
+
+        "call {handler}",
+
+        handler = sym general_protection_dispatch,
+    );
+}
+
+extern "C" fn general_protection_dispatch(
+    register_frame: *const u64,
+    error_code: u64,
+) -> ! {
+    serial_write(b"\r\n");
+    serial_write(b"================================\r\n");
+    serial_write(b" GENERAL PROTECTION FAULT (#GP)\r\n");
+    serial_write(b"================================\r\n");
+
+    serial_write(b"Error code: ");
+    serial_write_hex(error_code);
+    serial_write(b"\r\n");
+
+    unsafe {
+        let instruction_pointer =
+            *((register_frame as *const u8).add(80) as *const u64);
+
+        serial_write(b"Instruction pointer: ");
+        serial_write_hex(instruction_pointer);
+        serial_write(b"\r\n");
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
 #[unsafe(naked)]
 unsafe extern "C" fn page_fault_entry() -> ! {
     core::arch::naked_asm!(
@@ -136,6 +282,55 @@ unsafe extern "C" fn page_fault_entry() -> ! {
 
         handler = sym page_fault_dispatch,
     );
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn timer_irq_entry() -> ! {
+    core::arch::naked_asm!(
+        "push rax",
+        "push rcx",
+        "push rdx",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+
+        "call {handler}",
+
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rdi",
+        "pop rsi",
+        "pop rdx",
+        "pop rcx",
+        "pop rax",
+
+        "iretq",
+
+        handler = sym timer_irq_dispatch,
+    );
+}
+
+extern "C" fn timer_irq_dispatch() {
+    let ticks =
+        TIMER_TICKS.fetch_add(
+            1,
+            Ordering::Relaxed,
+        ) + 1;
+
+    if ticks % 100 == 0 {
+        serial_write(b"Timer ticks: ");
+        serial_write_hex(ticks);
+        serial_write(b"\r\n");
+    }
+
+    unsafe {
+        crate::hardware::pic::send_eoi(0);
+    }
 }
 
 extern "C" fn page_fault_dispatch(
@@ -291,8 +486,28 @@ pub unsafe fn init(
             options(nostack, preserves_flags)
         );
 
+        IDT[0].set_handler(
+            divide_error_entry,
+            code_segment,
+        );
+
+        IDT[6].set_handler(
+            invalid_opcode_entry,
+            code_segment,
+        );
+
+        IDT[13].set_handler(
+            general_protection_entry,
+            code_segment,
+        );
+
         IDT[14].set_handler(
             page_fault_entry,
+            code_segment,
+        );
+
+        IDT[32].set_handler(
+            timer_irq_entry,
             code_segment,
         );
 
