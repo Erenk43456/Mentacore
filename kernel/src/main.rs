@@ -10,6 +10,7 @@ use alloc::{
 };
 
 mod boot_state;
+mod cpu;
 mod display;
 mod interrupts;
 mod memory;
@@ -1228,7 +1229,19 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         memory::heap::init();
     }
 
-    serial_write(b"Initializing interrupt system...\r\n");
+    serial_write(
+        b"Initializing CPU state...\r\n"
+    );
+
+    cpu::init();
+
+    serial_write(
+        b"CPU state initialized.\r\n"
+    );
+
+    serial_write(
+        b"Initializing interrupt system...\r\n"
+    );
 
     unsafe {
         interrupts::init(&mut allocator);
