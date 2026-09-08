@@ -221,10 +221,22 @@ impl PhysicalFrameAllocator {
     }
 
     pub fn allocate_frame(&mut self) -> Option<Frame> {
-        while self.current_frame < self.bitmap.frame_count() {
-            let frame_number = self.current_frame;
+        let frame_count = self.bitmap.frame_count();
 
-            self.current_frame += 1;
+        if frame_count == 0 {
+            return None;
+        }
+
+        let start_frame = self.current_frame % frame_count;
+
+        // First pass: search from the current cursor to the end.
+        for offset in 0..frame_count {
+            let frame_number =
+                start_frame.checked_add(offset)?;
+
+            if frame_number >= frame_count {
+                break;
+            }
 
             let used = unsafe {
                 self.bitmap.is_used(frame_number)
@@ -242,6 +254,36 @@ impl PhysicalFrameAllocator {
             unsafe {
                 self.bitmap.set(frame_number);
             }
+
+            self.current_frame =
+                (frame_number + 1) % frame_count;
+
+            self.allocated_frames += 1;
+
+            return Some(frame);
+        }
+
+        // Second pass: wrap around and search from frame 0.
+        for frame_number in 0..start_frame {
+            let used = unsafe {
+                self.bitmap.is_used(frame_number)
+            };
+
+            if used {
+                continue;
+            }
+
+            let address =
+                frame_number.checked_mul(PAGE_SIZE)?;
+
+            let frame = Frame::new(address)?;
+
+            unsafe {
+                self.bitmap.set(frame_number);
+            }
+
+            self.current_frame =
+                (frame_number + 1) % frame_count;
 
             self.allocated_frames += 1;
 
@@ -278,6 +320,12 @@ impl PhysicalFrameAllocator {
 
         unsafe {
             self.bitmap.clear(frame_number);
+        }
+
+        // Move the allocation cursor back so the newly freed
+        // frame can be reused on the next allocation.
+        if frame_number < self.current_frame {
+            self.current_frame = frame_number;
         }
 
         Ok(())

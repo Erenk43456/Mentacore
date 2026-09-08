@@ -373,6 +373,37 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"PHYSICAL FRAME FREE TEST OK\r\n");
 
+    serial_write(b"Testing physical frame reuse...\r\n");
+
+    let reused_frame = match allocator.allocate_frame() {
+        Some(frame) => frame,
+        None => {
+            serial_write(b"ERROR: Failed to allocate reused frame\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    };
+
+    if reused_frame.start_address != test_frame.start_address {
+        serial_write(b"ERROR: Freed frame was not reused\r\n");
+        serial_write(b"Expected: ");
+        serial_write_hex(test_frame.start_address);
+        serial_write(b"\r\nActual:   ");
+        serial_write_hex(reused_frame.start_address);
+        serial_write(b"\r\n");
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(b"  Freed frame was reused: ");
+    serial_write_hex(reused_frame.start_address);
+    serial_write(b"\r\n");
+
+    serial_write(b"PHYSICAL FRAME REUSE TEST OK\r\n");
+
     serial_write(b"Allocated frames before paging: ");
     serial_write_hex(allocator.allocated_count());
     serial_write(b"\r\n");
