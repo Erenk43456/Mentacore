@@ -13,6 +13,26 @@ const HUGE_PAGE: u64 = 1 << 7;
 
 const IDENTITY_MAP_SIZE: u64 = 0x1_0000_0000;
 
+#[derive(Clone, Copy)]
+pub struct PageFlags {
+    pub writable: bool,
+    pub cache_disable: bool,
+}
+
+fn flags_to_entry(flags: PageFlags) -> u64 {
+    let mut entry = PRESENT;
+
+    if flags.writable {
+        entry |= WRITABLE;
+    }
+
+    if flags.cache_disable {
+        entry |= PCD;
+    }
+
+    entry
+}
+
 #[repr(align(4096))]
 struct PageTable {
     entries: [u64; ENTRY_COUNT],
@@ -84,6 +104,27 @@ pub unsafe fn init(
         boot_info,
     )?;
 
+    let test_virtual = 0xFFFF_9000_0000_0000;
+
+    let test_frame =
+        allocator.allocate_frame().ok_or(())?;
+
+    let test_physical =
+        test_frame.start_address;
+
+    unsafe {
+        map_page(
+            pml4,
+            allocator,
+            test_virtual,
+            test_physical,
+            PageFlags {
+                writable: true,
+                cache_disable: false,
+            },
+        )?;
+    }
+
     map_heap(
         pml4,
         allocator,
@@ -93,6 +134,17 @@ pub unsafe fn init(
 
     unsafe {
         load_cr3(pml4_frame.start_address);
+    }
+
+    let test_ptr =
+        test_virtual as *mut u64;
+
+    unsafe {
+        test_ptr.write(0xDEAD_BEEF_CAFE_BABE);
+
+        if test_ptr.read() != 0xDEAD_BEEF_CAFE_BABE {
+            return Err(());
+        }
     }
 
     Ok(())
@@ -183,6 +235,121 @@ fn map_framebuffer(
                     | PCD;
             }
         }
+    }
+
+    Ok(())
+}
+
+unsafe fn map_page(
+    pml4: *mut PageTable,
+    allocator: &mut PhysicalFrameAllocator,
+    virtual_address: u64,
+    physical_address: u64,
+    flags: PageFlags,
+) -> Result<(), ()> {
+    if virtual_address & (PAGE_SIZE - 1) != 0 {
+        return Err(());
+    }
+
+    if physical_address & (PAGE_SIZE - 1) != 0 {
+        return Err(());
+    }
+
+    let pml4_index =
+        ((virtual_address >> 39) & 0x1ff) as usize;
+
+    let pdpt_index =
+        ((virtual_address >> 30) & 0x1ff) as usize;
+
+    let pd_index =
+        ((virtual_address >> 21) & 0x1ff) as usize;
+
+    let pt_index =
+        ((virtual_address >> 12) & 0x1ff) as usize;
+
+    // PML4 -> PDPT
+    let pdpt = if unsafe {
+        (*pml4).entries[pml4_index] & PRESENT
+    } != 0 {
+        (unsafe {
+            (*pml4).entries[pml4_index]
+        } & 0x000f_ffff_ffff_f000) as *mut PageTable
+    } else {
+        let frame =
+            allocator.allocate_frame().ok_or(())?;
+
+        let table =
+            frame.start_address as *mut PageTable;
+
+        unsafe {
+            (*table).zero();
+
+            (*pml4).entries[pml4_index] =
+                frame.start_address
+                | PRESENT
+                | WRITABLE;
+        }
+
+        table
+    };
+
+    // PDPT -> PD
+    let pd = if unsafe {
+        (*pdpt).entries[pdpt_index] & PRESENT
+    } != 0 {
+        (unsafe {
+            (*pdpt).entries[pdpt_index]
+        } & 0x000f_ffff_ffff_f000) as *mut PageTable
+    } else {
+        let frame =
+            allocator.allocate_frame().ok_or(())?;
+
+        let table =
+            frame.start_address as *mut PageTable;
+
+        unsafe {
+            (*table).zero();
+
+            (*pdpt).entries[pdpt_index] =
+                frame.start_address
+                | PRESENT
+                | WRITABLE;
+        }
+
+        table
+    };
+
+    // PD -> PT
+    let pt = if unsafe {
+        (*pd).entries[pd_index] & PRESENT
+    } != 0 {
+        (unsafe {
+            (*pd).entries[pd_index]
+        } & 0x000f_ffff_ffff_f000) as *mut PageTable
+    } else {
+        let frame =
+            allocator.allocate_frame().ok_or(())?;
+
+        let table =
+            frame.start_address as *mut PageTable;
+
+        unsafe {
+            (*table).zero();
+
+            (*pd).entries[pd_index] =
+                frame.start_address
+                | PRESENT
+                | WRITABLE;
+        }
+
+        table
+    };
+
+    // PT -> physical frame
+    unsafe {
+        (*pt).entries[pt_index] =
+            physical_address
+            | flags_to_entry(flags);
     }
 
     Ok(())
