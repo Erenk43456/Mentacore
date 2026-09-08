@@ -601,9 +601,13 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
             memory::paging::current_pml4()
         };
 
+    let mut mapper =
+        unsafe {
+            memory::paging::Mapper::new(pml4)
+        };
+
     unsafe {
-        match memory::paging::map_page(
-            pml4,
+        match mapper.map(
             &mut allocator,
             duplicate_virtual,
             duplicate_frame_a.start_address,
@@ -643,16 +647,18 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     }
 
     unsafe {
-        if memory::paging::map_page(
-            pml4,
-            &mut allocator,
-            duplicate_virtual,
-            duplicate_frame_b.start_address,
-            memory::paging::PageFlags {
-                writable: true,
-                cache_disable: false,
-            },
-        ).is_ok() {
+        if mapper
+            .map(
+                &mut allocator,
+                duplicate_virtual,
+                duplicate_frame_b.start_address,
+                memory::paging::PageFlags {
+                    writable: true,
+                    cache_disable: false,
+                },
+            )
+            .is_ok()
+        {
             serial_write(
                 b"ERROR: Duplicate virtual mapping was accepted\r\n"
             );
@@ -717,9 +723,13 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
             memory::paging::current_pml4()
         };
 
+    let mut mapper =
+        unsafe {
+            memory::paging::Mapper::new(pml4)
+        };
+
     unsafe {
-        match memory::paging::map_page(
-            pml4,
+        match mapper.map(
             &mut allocator,
             mapping_virtual,
             mapping_physical,
@@ -821,9 +831,13 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
             memory::paging::current_pml4()
         };
 
+    let mut mapper =
+        unsafe {
+            memory::paging::Mapper::new(pml4)
+        };
+
     unsafe {
-        match memory::paging::map_page(
-            pml4,
+        match mapper.map(
             &mut allocator,
             unmap_virtual,
             unmap_physical,
@@ -873,15 +887,14 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     let unmapped_physical =
         unsafe {
-            match memory::paging::unmap_page(
-                pml4,
+            match mapper.unmap(
                 unmap_virtual,
             ) {
                 Ok(address) => address,
 
                 Err(()) => {
                     serial_write(
-                        b"ERROR: unmap_page failed\r\n"
+                        b"ERROR: Mapper::unmap failed\r\n"
                     );
 
                     loop {
@@ -1019,8 +1032,10 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         reused_frame.start_address;
 
     unsafe {
-        match memory::paging::map_page(
-            pml4,
+        let mut mapper =
+            memory::paging::Mapper::new(pml4);
+
+        match mapper.map(
             &mut allocator,
             unmap_virtual,
             remap_physical,
@@ -1078,6 +1093,11 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
             memory::paging::current_pml4()
         };
 
+    let mut mapper =
+        unsafe {
+            memory::paging::Mapper::new(pml4)
+        };
+
     // ---------------------------------------------------------
     // 1. Non-canonical virtual address
     // ---------------------------------------------------------
@@ -1086,10 +1106,12 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         0x0000_8000_0000_0000;
 
     unsafe {
-        if memory::paging::unmap_page(
-            pml4,
-            noncanonical_virtual,
-        ).is_ok() {
+        if mapper
+            .unmap(
+                noncanonical_virtual,
+            )
+            .is_ok()
+        {
             serial_write(
                 b"ERROR: Non-canonical unmap was accepted\r\n"
             );
@@ -1112,10 +1134,12 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         0xFFFF_9000_0000_5001;
 
     unsafe {
-        if memory::paging::unmap_page(
-            pml4,
-            unaligned_virtual,
-        ).is_ok() {
+        if mapper
+            .unmap(
+                unaligned_virtual,
+            )
+            .is_ok()
+        {
             serial_write(
                 b"ERROR: Unaligned unmap was accepted\r\n"
             );
@@ -1138,10 +1162,12 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         0xFFFF_9000_0000_6000;
 
     unsafe {
-        if memory::paging::unmap_page(
-            pml4,
-            unmapped_virtual,
-        ).is_ok() {
+        if mapper
+            .unmap(
+                unmapped_virtual,
+            )
+            .is_ok()
+        {
             serial_write(
                 b"ERROR: Unmapped page was accepted\r\n"
             );
@@ -1169,10 +1195,12 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         0x0000_0020_0000;
 
     unsafe {
-        if memory::paging::unmap_page(
-            pml4,
-            huge_page_virtual,
-        ).is_ok() {
+        if mapper
+            .unmap(
+                huge_page_virtual,
+            )
+            .is_ok()
+        {
             serial_write(
                 b"ERROR: Huge-page unmap was accepted\r\n"
             );

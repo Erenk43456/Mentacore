@@ -721,3 +721,43 @@ unsafe fn load_cr3(address: u64) {
         );
     }
 }
+
+pub struct Mapper {
+    pml4: *mut PageTable,
+}
+
+impl Mapper {
+    pub unsafe fn new(pml4: *mut PageTable) -> Self {
+        Self { pml4 }
+    }
+
+    pub unsafe fn map(
+        &mut self,
+        allocator: &mut PhysicalFrameAllocator,
+        virtual_address: u64,
+        physical_address: u64,
+        flags: PageFlags,
+    ) -> Result<(), ()> {
+        unsafe {
+            map_page(
+                self.pml4,
+                allocator,
+                virtual_address,
+                physical_address,
+                flags,
+            )
+        }
+    }
+
+    pub unsafe fn unmap(
+        &mut self,
+        virtual_address: u64,
+    ) -> Result<u64, ()> {
+        unsafe {
+            unmap_page(
+                self.pml4,
+                virtual_address,
+            )
+        }
+    }
+}

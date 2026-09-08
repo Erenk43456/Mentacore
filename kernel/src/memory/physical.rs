@@ -90,27 +90,6 @@ impl FrameBitmap {
         }
     }
 
-    pub unsafe fn mark_used_range(
-        &mut self,
-        start_address: u64,
-        page_count: u64,
-    ) {
-        let first_frame =
-            start_address / PAGE_SIZE;
-
-        for frame in 0..page_count {
-            let frame_number =
-                match first_frame.checked_add(frame) {
-                    Some(value) => value,
-                    None => return,
-                };
-
-            unsafe {
-                self.set(frame_number);
-            }
-        }
-    }
-
     pub unsafe fn mark_free_range(
         &mut self,
         start_address: u64,
@@ -198,10 +177,6 @@ impl FrameBitmap {
 
     pub fn frame_count(&self) -> u64 {
         self.frame_count
-    }
-
-    pub fn address(&self) -> u64 {
-        self.address
     }
 }
 
