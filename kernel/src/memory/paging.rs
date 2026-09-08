@@ -147,6 +147,36 @@ pub unsafe fn init(
         }
     }
 
+    let test_frame_2 =
+        allocator.allocate_frame().ok_or(())?;
+
+    let test_physical_2 =
+        test_frame_2.start_address;
+
+    unsafe {
+        map_page(
+            pml4,
+            allocator,
+            test_virtual + PAGE_SIZE,
+            test_physical_2,
+            PageFlags {
+                writable: true,
+                cache_disable: false,
+            },
+        )?;
+    }
+
+    let test_ptr_2 =
+        (test_virtual + PAGE_SIZE) as *mut u64;
+
+    unsafe {
+        test_ptr_2.write(0x1122_3344_5566_7788);
+
+        if test_ptr_2.read() != 0x1122_3344_5566_7788 {
+            return Err(());
+        }
+    }
+
     Ok(())
 }
 
