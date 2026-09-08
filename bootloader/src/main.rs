@@ -500,13 +500,15 @@ unsafe fn jump_to_kernel(
     stack_top: u64,
     boot_info: u64,
 ) -> ! {
-    core::arch::asm!(
-        "mov rsp, {stack}",
-        "mov rdi, {boot_info}",
-        "jmp {entry}",
-        stack = in(reg) stack_top,
-        boot_info = in(reg) boot_info,
-        entry = in(reg) entry,
-        options(noreturn)
-    );
+    unsafe {
+        core::arch::asm!(
+            "mov rsp, {stack}",
+            "mov rdi, {boot_info}",
+            "jmp {entry}",
+            stack = in(reg) stack_top,
+            boot_info = in(reg) boot_info,
+            entry = in(reg) entry,
+            options(noreturn)
+        );
+    }
 }
