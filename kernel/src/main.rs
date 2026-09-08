@@ -119,6 +119,19 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         }
     };
 
+    let highest_conventional_address =
+        match memory_map.highest_conventional_address() {
+            Some(address) => address,
+            None => {
+                serial_write(b"No conventional memory found.\r\n");
+                loop {}
+            }
+        };
+
+    serial_write(b"Highest conventional address: ");
+    serial_write_hex(highest_conventional_address);
+    serial_write(b"\r\n");
+
     serial_write(b"Memory map descriptor count: ");
     serial_write_hex(memory_map.descriptor_count() as u64);
     serial_write(b"\r\n");

@@ -54,4 +54,30 @@ impl<'a> MemoryMap<'a> {
             ptr.read_unaligned()
         })
     }
+
+    pub fn highest_conventional_address(&self) -> Option<u64> {
+        let mut highest: Option<u64> = None;
+
+        for index in 0..self.descriptor_count() {
+            let descriptor = unsafe {
+                self.descriptor(index)?
+            };
+
+            if descriptor.ty != 7 {
+                continue;
+            }
+
+            let end = descriptor
+                .physical_start
+                .checked_add(
+                    descriptor.number_of_pages.checked_mul(4096)?
+                )?;
+
+            highest = Some(
+                highest.map_or(end, |current| current.max(end))
+            );
+        }
+
+        highest
+    }
 }
