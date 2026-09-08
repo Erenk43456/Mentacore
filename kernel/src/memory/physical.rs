@@ -1,4 +1,4 @@
-use crate::memory_map::MemoryMap;
+use super::memory_map::MemoryMap;
 
 const PAGE_SIZE: u64 = 4096;
 const EFI_CONVENTIONAL_MEMORY: u32 = 7;

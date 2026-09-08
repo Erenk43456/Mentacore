@@ -3,8 +3,7 @@
 
 mod boot_state;
 mod display;
-mod memory_map;
-mod physical_memory;
+mod memory;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -13,8 +12,8 @@ use display::{boot_ui, Framebuffer};
 use mentacore_boot_protocol::BootInfo;
 
 use boot_state::BootState;
-use memory_map::MemoryMap;
-use physical_memory::PhysicalFrameAllocator;
+use memory::memory_map::MemoryMap;
+use memory::physical::PhysicalFrameAllocator;
 
 const COM1: u16 = 0x3F8;
 
@@ -180,6 +179,24 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     }
 
     serial_write(b"Physical frame allocator OK.\r\n");
+
+    serial_write(b"Initializing paging...\r\n");
+
+    match unsafe {
+        memory::paging::init(&mut allocator, boot_info)
+    } {
+        Ok(()) => {
+            serial_write(b"Paging initialized.\r\n");
+        }
+
+        Err(()) => {
+            serial_write(b"ERROR: Failed to initialize paging\r\n");
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
 
     serial_write(b"Initializing display renderer...\r\n");
 
