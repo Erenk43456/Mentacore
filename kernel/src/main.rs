@@ -563,6 +563,131 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         }
     }
 
+    serial_write(b"Testing duplicate virtual mapping rejection...\r\n");
+
+    let duplicate_virtual =
+        0xFFFF_9000_0000_2000;
+
+    let duplicate_frame_a =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => {
+                serial_write(
+                    b"ERROR: Failed to allocate duplicate test frame A\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        };
+
+    let duplicate_frame_b =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => {
+                serial_write(
+                    b"ERROR: Failed to allocate duplicate test frame B\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        };
+
+    let pml4 =
+        unsafe {
+            memory::paging::current_pml4()
+        };
+
+    unsafe {
+        match memory::paging::map_page(
+            pml4,
+            &mut allocator,
+            duplicate_virtual,
+            duplicate_frame_a.start_address,
+            memory::paging::PageFlags {
+                writable: true,
+                cache_disable: false,
+            },
+        ) {
+            Ok(()) => {}
+            Err(()) => {
+                serial_write(
+                    b"ERROR: Initial virtual mapping failed\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        }
+    }
+
+    if allocator
+        .is_frame_used(duplicate_frame_a)
+        .unwrap_or(false)
+    {
+        serial_write(
+            b"  First mapping frame marked used.\r\n"
+        );
+    } else {
+        serial_write(
+            b"ERROR: First mapping frame not marked used\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    unsafe {
+        if memory::paging::map_page(
+            pml4,
+            &mut allocator,
+            duplicate_virtual,
+            duplicate_frame_b.start_address,
+            memory::paging::PageFlags {
+                writable: true,
+                cache_disable: false,
+            },
+        ).is_ok() {
+            serial_write(
+                b"ERROR: Duplicate virtual mapping was accepted\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Duplicate virtual mapping correctly rejected.\r\n"
+    );
+
+    if allocator
+        .is_frame_used(duplicate_frame_b)
+        .unwrap_or(false)
+    {
+        serial_write(
+            b"  Replacement frame remains allocated.\r\n"
+        );
+    } else {
+        serial_write(
+            b"ERROR: Replacement frame became unexpectedly free\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"PAGING DUPLICATE MAP TEST OK\r\n"
+    );
+
     serial_write(b"Initializing kernel heap...\r\n");
 
     unsafe {

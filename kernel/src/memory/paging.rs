@@ -443,6 +443,10 @@ pub unsafe fn map_page(
 
     // PT -> physical frame
     unsafe {
+        if (*pt).entries[pt_index] & PRESENT != 0 {
+            return Err(());
+        }
+
         (*pt).entries[pt_index] =
             physical_address
             | flags_to_entry(flags);
