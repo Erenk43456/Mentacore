@@ -455,6 +455,106 @@ pub unsafe fn map_page(
     Ok(())
 }
 
+pub unsafe fn unmap_page(
+    pml4: *mut PageTable,
+    virtual_address: u64,
+) -> Result<u64, ()> {
+    if !is_canonical_address(virtual_address) {
+        return Err(());
+    }
+
+    if virtual_address & (PAGE_SIZE - 1) != 0 {
+        return Err(());
+    }
+
+    let pml4_index =
+        ((virtual_address >> 39) & 0x1ff) as usize;
+
+    let pdpt_index =
+        ((virtual_address >> 30) & 0x1ff) as usize;
+
+    let pd_index =
+        ((virtual_address >> 21) & 0x1ff) as usize;
+
+    let pt_index =
+        ((virtual_address >> 12) & 0x1ff) as usize;
+
+    // PML4 -> PDPT
+    let pml4_entry = unsafe {
+        (*pml4).entries[pml4_index]
+    };
+
+    if pml4_entry & PRESENT == 0 {
+        return Err(());
+    }
+
+    let pdpt =
+        (pml4_entry & 0x000f_ffff_ffff_f000)
+            as *mut PageTable;
+
+    // PDPT -> PD
+    let pdpt_entry = unsafe {
+        (*pdpt).entries[pdpt_index]
+    };
+
+    if pdpt_entry & PRESENT == 0 {
+        return Err(());
+    }
+
+    if pdpt_entry & HUGE_PAGE != 0 {
+        return Err(());
+    }
+
+    let pd =
+        (pdpt_entry & 0x000f_ffff_ffff_f000)
+            as *mut PageTable;
+
+    // PD -> PT
+    let pd_entry = unsafe {
+        (*pd).entries[pd_index]
+    };
+
+    if pd_entry & PRESENT == 0 {
+        return Err(());
+    }
+
+    if pd_entry & HUGE_PAGE != 0 {
+        return Err(());
+    }
+
+    let pt =
+        (pd_entry & 0x000f_ffff_ffff_f000)
+            as *mut PageTable;
+
+    // PT -> physical frame
+    let pte = unsafe {
+        (*pt).entries[pt_index]
+    };
+
+    if pte & PRESENT == 0 {
+        return Err(());
+    }
+
+    let physical_address =
+        pte & 0x000f_ffff_ffff_f000;
+
+    // Remove mapping.
+    unsafe {
+        (*pt).entries[pt_index] = 0;
+    }
+
+    // Remove stale TLB entry.
+    unsafe {
+        core::arch::asm!(
+            "invlpg [{}]",
+            in(reg) virtual_address,
+            options(nostack, preserves_flags)
+        );
+    }
+
+    Ok(physical_address)
+}
+
 fn map_heap(
     pml4: *mut PageTable,
     allocator: &mut PhysicalFrameAllocator,

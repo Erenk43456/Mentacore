@@ -792,7 +792,408 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         b"PAGING MAPPING TEST OK\r\n"
     );
 
-    serial_write(b"Initializing kernel heap...\r\n");
+    serial_write(
+        b"Testing virtual page unmapping...\r\n"
+    );
+
+    let unmap_virtual =
+        0xFFFF_9000_0000_4000;
+
+    let unmap_frame =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => {
+                serial_write(
+                    b"ERROR: Failed to allocate unmap test frame\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        };
+
+    let unmap_physical =
+        unmap_frame.start_address;
+
+    let pml4 =
+        unsafe {
+            memory::paging::current_pml4()
+        };
+
+    unsafe {
+        match memory::paging::map_page(
+            pml4,
+            &mut allocator,
+            unmap_virtual,
+            unmap_physical,
+            memory::paging::PageFlags {
+                writable: true,
+                cache_disable: false,
+            },
+        ) {
+            Ok(()) => {}
+
+            Err(()) => {
+                serial_write(
+                    b"ERROR: Unmap test initial mapping failed\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        }
+    }
+
+    let unmap_ptr =
+        unmap_virtual as *mut u64;
+
+    unsafe {
+        unmap_ptr.write(
+            0x5566_7788_AABB_CCDD
+        );
+
+        if unmap_ptr.read()
+            != 0x5566_7788_AABB_CCDD
+        {
+            serial_write(
+                b"ERROR: Unmap test initial access failed\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Initial mapping access OK.\r\n"
+    );
+
+    let unmapped_physical =
+        unsafe {
+            match memory::paging::unmap_page(
+                pml4,
+                unmap_virtual,
+            ) {
+                Ok(address) => address,
+
+                Err(()) => {
+                    serial_write(
+                        b"ERROR: unmap_page failed\r\n"
+                    );
+
+                    loop {
+                        core::hint::spin_loop();
+                    }
+                }
+            }
+        };
+
+    if unmapped_physical != unmap_physical {
+        serial_write(
+            b"ERROR: Unmapped physical address mismatch\r\n"
+        );
+
+        serial_write(b"Expected: ");
+        serial_write_hex(unmap_physical);
+        serial_write(b"\r\n");
+
+        serial_write(b"Actual:   ");
+        serial_write_hex(unmapped_physical);
+        serial_write(b"\r\n");
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Correct physical frame returned.\r\n"
+    );
+
+    if !allocator
+        .is_frame_used(unmap_frame)
+        .unwrap_or(false)
+    {
+        serial_write(
+            b"ERROR: Unmapped frame became free unexpectedly\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Unmapped frame remains allocated.\r\n"
+    );
+
+    let returned_frame =
+        match memory::physical::Frame::new(
+            unmapped_physical
+        ) {
+            Some(frame) => frame,
+
+            None => {
+                serial_write(
+                    b"ERROR: Returned physical address is not a valid frame\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        };
+
+    match allocator.free_frame(returned_frame) {
+        Ok(()) => {}
+
+        Err(()) => {
+            serial_write(
+                b"ERROR: Failed to free unmapped frame\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    if allocator
+        .is_frame_used(returned_frame)
+        .unwrap_or(true)
+    {
+        serial_write(
+            b"ERROR: Unmapped frame still marked used after free\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Unmapped frame freed successfully.\r\n"
+    );
+
+    let reused_frame =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+
+            None => {
+                serial_write(
+                    b"ERROR: Failed to reallocate freed frame\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        };
+
+    if reused_frame.start_address != unmap_physical {
+        serial_write(
+            b"ERROR: Freed unmapped frame was not reused\r\n"
+        );
+
+        serial_write(b"Expected: ");
+        serial_write_hex(unmap_physical);
+        serial_write(b"\r\n");
+
+        serial_write(b"Actual:   ");
+        serial_write_hex(reused_frame.start_address);
+        serial_write(b"\r\n");
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Freed frame reused successfully.\r\n"
+    );
+
+    let remap_physical =
+        reused_frame.start_address;
+
+    unsafe {
+        match memory::paging::map_page(
+            pml4,
+            &mut allocator,
+            unmap_virtual,
+            remap_physical,
+            memory::paging::PageFlags {
+                writable: true,
+                cache_disable: false,
+            },
+        ) {
+            Ok(()) => {}
+
+            Err(()) => {
+                serial_write(
+                    b"ERROR: Remapping unmapped virtual page failed\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        }
+    }
+
+    unsafe {
+        unmap_ptr.write(
+            0x1122_3344_5566_7788
+        );
+
+        if unmap_ptr.read()
+            != 0x1122_3344_5566_7788
+        {
+            serial_write(
+                b"ERROR: Remapped page access failed\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Remapped page access OK.\r\n"
+    );
+
+    serial_write(
+        b"PAGING UNMAP TEST OK\r\n"
+    );
+
+    serial_write(
+        b"Testing virtual page unmapping rejection paths...\r\n"
+    );
+
+    let pml4 =
+        unsafe {
+            memory::paging::current_pml4()
+        };
+
+    // ---------------------------------------------------------
+    // 1. Non-canonical virtual address
+    // ---------------------------------------------------------
+
+    let noncanonical_virtual =
+        0x0000_8000_0000_0000;
+
+    unsafe {
+        if memory::paging::unmap_page(
+            pml4,
+            noncanonical_virtual,
+        ).is_ok() {
+            serial_write(
+                b"ERROR: Non-canonical unmap was accepted\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Non-canonical address correctly rejected.\r\n"
+    );
+
+    // ---------------------------------------------------------
+    // 2. Unaligned virtual address
+    // ---------------------------------------------------------
+
+    let unaligned_virtual =
+        0xFFFF_9000_0000_5001;
+
+    unsafe {
+        if memory::paging::unmap_page(
+            pml4,
+            unaligned_virtual,
+        ).is_ok() {
+            serial_write(
+                b"ERROR: Unaligned unmap was accepted\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Unaligned address correctly rejected.\r\n"
+    );
+
+    // ---------------------------------------------------------
+    // 3. Valid but never-mapped virtual address
+    // ---------------------------------------------------------
+
+    let unmapped_virtual =
+        0xFFFF_9000_0000_6000;
+
+    unsafe {
+        if memory::paging::unmap_page(
+            pml4,
+            unmapped_virtual,
+        ).is_ok() {
+            serial_write(
+                b"ERROR: Unmapped page was accepted\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Unmapped page correctly rejected.\r\n"
+    );
+
+    // ---------------------------------------------------------
+    // 4. Huge-page mapping
+    // ---------------------------------------------------------
+    //
+    // The identity map uses 2 MiB huge pages.
+    // Attempting to unmap one through the 4 KiB unmap API
+    // must be rejected.
+    //
+
+    let huge_page_virtual =
+        0x0000_0020_0000;
+
+    unsafe {
+        if memory::paging::unmap_page(
+            pml4,
+            huge_page_virtual,
+        ).is_ok() {
+            serial_write(
+                b"ERROR: Huge-page unmap was accepted\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Huge-page mapping correctly rejected.\r\n"
+    );
+
+    serial_write(
+        b"PAGING UNMAP REJECTION TEST OK\r\n"
+    );
+
+    serial_write(
+        b"Initializing kernel heap...\r\n"
+    );
 
     unsafe {
         memory::heap::init();
