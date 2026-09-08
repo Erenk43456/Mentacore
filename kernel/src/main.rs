@@ -151,14 +151,22 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     let mut allocator = PhysicalFrameAllocator::new(memory_map);
 
-    for index in 0..10 {
+    for index in 0..162 {
         match allocator.allocate_frame() {
             Some(frame) => {
-                serial_write(b"  Frame ");
-                serial_write_hex(index);
-                serial_write(b": ");
-                serial_write_hex(frame.start_address);
-                serial_write(b"\r\n");
+                if index == 0
+                    || index == 1
+                    || index == 158
+                    || index == 159
+                    || index == 160
+                    || index == 161
+                {
+                    serial_write(b"  Frame ");
+                    serial_write_hex(index);
+                    serial_write(b": ");
+                    serial_write_hex(frame.start_address);
+                    serial_write(b"\r\n");
+                }
             }
 
             None => {
