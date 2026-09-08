@@ -65,11 +65,20 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         Framebuffer::from_boot_info(boot_info)
     };
 
+    let state = BootState::Initializing;
+
+    serial_write(b"Display renderer initialized.\r\n");
+
+    let state = match state {
+        BootState::Initializing => BootState::Ready,
+        other => other,
+    };
+
     serial_write(b"Rendering Mentacore boot UI...\r\n");
 
     boot_ui::render(
         &mut framebuffer,
-        BootState::Ready,
+        state,
     );
 
     serial_write(b"DISPLAY OK\r\n");
