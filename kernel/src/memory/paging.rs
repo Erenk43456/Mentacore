@@ -124,6 +124,23 @@ pub unsafe fn init(
         }
     }
 
+    let invalid_physical = 0x0010_0000_0000_0000;
+
+    unsafe {
+        if map_page(
+            pml4,
+            allocator,
+            0xFFFF_9000_0000_2000,
+            invalid_physical,
+            PageFlags {
+                writable: true,
+                cache_disable: false,
+            },
+        ).is_ok() {
+            return Err(());
+        }
+    }
+
     let test_virtual = 0xFFFF_9000_0000_0000;
 
     let test_frame =
@@ -301,6 +318,10 @@ fn is_canonical_address(address: u64) -> bool {
     }
 }
 
+fn is_valid_physical_address(address: u64) -> bool {
+    (address >> 52) == 0
+}
+
 unsafe fn map_page(
     pml4: *mut PageTable,
     allocator: &mut PhysicalFrameAllocator,
@@ -317,6 +338,10 @@ unsafe fn map_page(
     }
 
     if physical_address & (PAGE_SIZE - 1) != 0 {
+        return Err(());
+    }
+
+    if !is_valid_physical_address(physical_address) {
         return Err(());
     }
 
