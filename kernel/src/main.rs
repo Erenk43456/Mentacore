@@ -230,6 +230,30 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"HEAP TEST OK\r\n");
 
+    serial_write(b"Testing multi-page heap...\r\n");
+
+    let mut multi_page = Vec::with_capacity(2048);
+
+    for i in 0..2048u64 {
+        multi_page.push(i);
+    }
+
+    serial_write(b"  Multi-page Vec allocated.\r\n");
+
+    serial_write(b"  Multi-page Vec[0]: ");
+    serial_write_hex(multi_page[0]);
+    serial_write(b"\r\n");
+
+    serial_write(b"  Multi-page Vec[1024]: ");
+    serial_write_hex(multi_page[1024]);
+    serial_write(b"\r\n");
+
+    serial_write(b"  Multi-page Vec[2047]: ");
+    serial_write_hex(multi_page[2047]);
+    serial_write(b"\r\n");
+
+    serial_write(b"HEAP MULTI-PAGE TEST OK\r\n");
+
     serial_write(b"Initializing display renderer...\r\n");
 
     let mut framebuffer = unsafe {
