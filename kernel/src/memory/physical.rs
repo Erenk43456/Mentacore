@@ -208,7 +208,8 @@ impl FrameBitmap {
 pub struct PhysicalFrameAllocator {
     bitmap: FrameBitmap,
     current_frame: u64,
-    allocated_frames: u64,
+    live_allocated_frames: u64,
+    total_allocations: u64,
 }
 
 impl PhysicalFrameAllocator {
@@ -216,7 +217,8 @@ impl PhysicalFrameAllocator {
         Self {
             bitmap,
             current_frame: 0,
-            allocated_frames: 0,
+            live_allocated_frames: 0,
+            total_allocations: 0,
         }
     }
 
@@ -258,7 +260,8 @@ impl PhysicalFrameAllocator {
             self.current_frame =
                 (frame_number + 1) % frame_count;
 
-            self.allocated_frames += 1;
+            self.live_allocated_frames += 1;
+            self.total_allocations += 1;
 
             return Some(frame);
         }
@@ -285,7 +288,8 @@ impl PhysicalFrameAllocator {
             self.current_frame =
                 (frame_number + 1) % frame_count;
 
-            self.allocated_frames += 1;
+            self.live_allocated_frames += 1;
+            self.total_allocations += 1;
 
             return Some(frame);
         }
@@ -322,6 +326,11 @@ impl PhysicalFrameAllocator {
             self.bitmap.clear(frame_number);
         }
 
+        self.live_allocated_frames =
+            self.live_allocated_frames
+                .checked_sub(1)
+                .ok_or(())?;
+
         // Move the allocation cursor back so the newly freed
         // frame can be reused on the next allocation.
         if frame_number < self.current_frame {
@@ -354,6 +363,10 @@ impl PhysicalFrameAllocator {
     }
 
     pub fn allocated_count(&self) -> u64 {
-        self.allocated_frames
+        self.live_allocated_frames
+    }
+
+    pub fn total_allocations(&self) -> u64 {
+        self.total_allocations
     }
 }

@@ -404,6 +404,61 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"PHYSICAL FRAME REUSE TEST OK\r\n");
 
+    serial_write(b"Testing physical allocator counters...\r\n");
+
+    let live_before = allocator.allocated_count();
+    let total_before = allocator.total_allocations();
+
+    let counter_frame = match allocator.allocate_frame() {
+        Some(frame) => frame,
+        None => {
+            serial_write(b"ERROR: Counter test allocation failed\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    };
+
+    if allocator.allocated_count() != live_before + 1 {
+        serial_write(b"ERROR: Live allocation counter did not increment\r\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    if allocator.total_allocations() != total_before + 1 {
+        serial_write(b"ERROR: Total allocation counter did not increment\r\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    match allocator.free_frame(counter_frame) {
+        Ok(()) => {}
+        Err(()) => {
+            serial_write(b"ERROR: Counter test free failed\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    if allocator.allocated_count() != live_before {
+        serial_write(b"ERROR: Live allocation counter did not decrement\r\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    if allocator.total_allocations() != total_before + 1 {
+        serial_write(b"ERROR: Total allocation counter changed after free\r\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(b"PHYSICAL FRAME COUNTER TEST OK\r\n");
+
     serial_write(b"Allocated frames before paging: ");
     serial_write_hex(allocator.allocated_count());
     serial_write(b"\r\n");
