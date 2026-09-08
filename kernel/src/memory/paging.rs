@@ -104,6 +104,26 @@ pub unsafe fn init(
         boot_info,
     )?;
 
+    let invalid_virtual = 0x0000_8000_0000_0000;
+
+    let invalid_frame =
+        allocator.allocate_frame().ok_or(())?;
+
+    unsafe {
+        if map_page(
+            pml4,
+            allocator,
+            invalid_virtual,
+            invalid_frame.start_address,
+            PageFlags {
+                writable: true,
+                cache_disable: false,
+            },
+        ).is_ok() {
+            return Err(());
+        }
+    }
+
     let test_virtual = 0xFFFF_9000_0000_0000;
 
     let test_frame =
@@ -270,6 +290,17 @@ fn map_framebuffer(
     Ok(())
 }
 
+fn is_canonical_address(address: u64) -> bool {
+    let sign_bit = (address >> 47) & 1;
+    let upper_bits = address >> 48;
+
+    if sign_bit == 0 {
+        upper_bits == 0
+    } else {
+        upper_bits == 0xFFFF
+    }
+}
+
 unsafe fn map_page(
     pml4: *mut PageTable,
     allocator: &mut PhysicalFrameAllocator,
@@ -277,6 +308,10 @@ unsafe fn map_page(
     physical_address: u64,
     flags: PageFlags,
 ) -> Result<(), ()> {
+    if !is_canonical_address(virtual_address) {
+        return Err(());
+    }
+
     if virtual_address & (PAGE_SIZE - 1) != 0 {
         return Err(());
     }
