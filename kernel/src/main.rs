@@ -1,6 +1,14 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
+use alloc::{
+    boxed::Box,
+    string::String,
+    vec::Vec,
+};
+
 mod boot_state;
 mod display;
 mod memory;
@@ -150,34 +158,6 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     let mut allocator = PhysicalFrameAllocator::new(memory_map);
 
-    for index in 0..162 {
-        match allocator.allocate_frame() {
-            Some(frame) => {
-                if index == 0
-                    || index == 1
-                    || index == 158
-                    || index == 159
-                    || index == 160
-                    || index == 161
-                {
-                    serial_write(b"  Frame ");
-                    serial_write_hex(index);
-                    serial_write(b": ");
-                    serial_write_hex(frame.start_address);
-                    serial_write(b"\r\n");
-                }
-            }
-
-            None => {
-                serial_write(b"ERROR: No physical frames available\r\n");
-
-                loop {
-                    core::hint::spin_loop();
-                }
-            }
-        }
-    }
-
     serial_write(b"Physical frame allocator OK.\r\n");
 
     serial_write(b"Initializing paging...\r\n");
@@ -197,6 +177,49 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
             }
         }
     }
+
+    serial_write(b"Initializing kernel heap...\r\n");
+
+    unsafe {
+        memory::heap::init();
+    }
+
+    serial_write(b"Kernel heap initialized.\r\n");
+
+    serial_write(b"Testing kernel heap...\r\n");
+
+    let mut values = Vec::new();
+    values.push(10u64);
+    values.push(20u64);
+    values.push(30u64);
+
+    let boxed = Box::new(1234u64);
+
+    let text = String::from("Mentacore heap");
+
+    serial_write(b"  String: ");
+    serial_write(text.as_bytes());
+    serial_write(b"\r\n");
+
+    serial_write(b"  Vec[0]: ");
+    serial_write_hex(values[0]);
+    serial_write(b"\r\n");
+
+    serial_write(b"  Vec[1]: ");
+    serial_write_hex(values[1]);
+    serial_write(b"\r\n");
+
+    serial_write(b"  Vec[2]: ");
+    serial_write_hex(values[2]);
+    serial_write(b"\r\n");
+
+    serial_write(b"  Box: ");
+    serial_write_hex(*boxed);
+    serial_write(b"\r\n");
+
+    serial_write(b"  String allocated.\r\n");
+
+    serial_write(b"HEAP TEST OK\r\n");
 
     serial_write(b"Initializing display renderer...\r\n");
 

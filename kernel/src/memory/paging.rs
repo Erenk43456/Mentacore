@@ -84,6 +84,13 @@ pub unsafe fn init(
         boot_info,
     )?;
 
+    map_heap(
+        pml4,
+        allocator,
+        0xFFFF_8000_0000_0000,
+        1024 * 1024,
+    )?;
+
     unsafe {
         load_cr3(pml4_frame.start_address);
     }
@@ -175,6 +182,88 @@ fn map_framebuffer(
                     | WRITABLE
                     | PCD;
             }
+        }
+    }
+
+    Ok(())
+}
+
+fn map_heap(
+    pml4: *mut PageTable,
+    allocator: &mut PhysicalFrameAllocator,
+    virtual_start: u64,
+    size: u64,
+) -> Result<(), ()> {
+    if size == 0 {
+        return Err(());
+    }
+
+    let page_count =
+        (size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+    let pml4_index =
+        ((virtual_start >> 39) & 0x1ff) as usize;
+
+    let pdpt_frame =
+        allocator.allocate_frame().ok_or(())?;
+
+    let pdpt =
+        pdpt_frame.start_address as *mut PageTable;
+
+    unsafe {
+        (*pdpt).zero();
+
+        (*pml4).entries[pml4_index] =
+            pdpt_frame.start_address
+            | PRESENT
+            | WRITABLE;
+    }
+
+    let pdpt_index =
+        ((virtual_start >> 30) & 0x1ff) as usize;
+
+    let pd_frame =
+        allocator.allocate_frame().ok_or(())?;
+
+    let pd =
+        pd_frame.start_address as *mut PageTable;
+
+    unsafe {
+        (*pd).zero();
+
+        (*pdpt).entries[pdpt_index] =
+            pd_frame.start_address
+            | PRESENT
+            | WRITABLE;
+    }
+
+    let pd_index =
+        ((virtual_start >> 21) & 0x1ff) as usize;
+
+    let pt_frame =
+        allocator.allocate_frame().ok_or(())?;
+
+    let pt =
+        pt_frame.start_address as *mut PageTable;
+
+    unsafe {
+        (*pt).zero();
+
+        (*pd).entries[pd_index] =
+            pt_frame.start_address
+            | PRESENT
+            | WRITABLE;
+    }
+
+    for page_index in 0..page_count {
+        let frame =
+            allocator.allocate_frame().ok_or(())?;
+
+        unsafe {
+            (*pt).entries[page_index as usize] =
+                frame.start_address
+                | PRESENT
+                | WRITABLE;
         }
     }
 
