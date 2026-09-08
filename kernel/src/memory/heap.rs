@@ -5,6 +5,8 @@ use core::sync::atomic::{AtomicU64, Ordering};
 pub const HEAP_START: u64 = 0xFFFF_8000_0000_0000;
 pub const HEAP_SIZE: u64 = 1024 * 1024 * 1024;
 
+const HEAP_END: u64 = HEAP_START + HEAP_SIZE;
+
 struct BumpAllocator {
     next: AtomicU64,
 }
@@ -29,6 +31,14 @@ unsafe impl GlobalAlloc for BumpAllocator {
         let size = layout.size() as u64;
         let align = layout.align() as u64;
 
+        if size == 0 {
+            return null_mut();
+        }
+
+        if !align.is_power_of_two() {
+            return null_mut();
+        }
+
         loop {
             let current =
                 self.next.load(Ordering::Relaxed);
@@ -38,13 +48,16 @@ unsafe impl GlobalAlloc for BumpAllocator {
                 None => return null_mut(),
             };
 
-            let new_next =
-                match aligned.checked_add(size) {
-                    Some(value) => value,
-                    None => return null_mut(),
-                };
+            if aligned >= HEAP_END {
+                return null_mut();
+            }
 
-            if new_next > HEAP_START + HEAP_SIZE {
+            let new_next = match aligned.checked_add(size) {
+                Some(value) => value,
+                None => return null_mut(),
+            };
+
+            if new_next > HEAP_END {
                 return null_mut();
             }
 
@@ -68,6 +81,7 @@ unsafe impl GlobalAlloc for BumpAllocator {
         _ptr: *mut u8,
         _layout: Layout,
     ) {
+        // Bump allocator does not reclaim individual allocations yet.
     }
 }
 
