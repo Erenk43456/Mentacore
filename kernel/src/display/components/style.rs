@@ -34,9 +34,24 @@ impl TextStyle {
         color: color::TEXT_MUTED,
     };
 
+    pub const INITIALIZING: Self = Self {
+        font: &FONT_8X13,
+        color: color::ACCENT,
+    };
+
     pub const SUCCESS: Self = Self {
         font: &FONT_8X13,
         color: color::SUCCESS,
+    };
+
+    pub const WARNING: Self = Self {
+        font: &FONT_8X13,
+        color: color::WARNING,
+    };
+
+    pub const ERROR: Self = Self {
+        font: &FONT_8X13,
+        color: color::ERROR,
     };
 
     pub const SMALL: Self = Self {

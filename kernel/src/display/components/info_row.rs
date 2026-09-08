@@ -6,6 +6,7 @@ use embedded_graphics::{
 
 use super::{
     super::Framebuffer,
+    Status,
     TextLabel,
     TextStyle,
 };
@@ -52,15 +53,16 @@ impl InfoRow {
         }
     }
 
-    pub fn ready(
+    pub fn status(
         position: Point,
         label: &'static str,
+        status: Status,
     ) -> Self {
         Self::new(
             position,
             label,
-            "READY",
-            TextStyle::SUCCESS,
+            status.text(),
+            status.text_style(),
         )
     }
 

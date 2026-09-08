@@ -91,7 +91,7 @@ pub fn render(
             layout.status_text_y(),
         ),
         status.status().text(),
-        TextStyle::SUCCESS,
+        status.status().text_style(),
     );
 
     status_text.draw(framebuffer);
@@ -99,21 +99,24 @@ pub fn render(
     // System information
     let info_x = screen.centered_x(INFO_WIDTH);
 
-    InfoRow::ready(
+    InfoRow::status(
         Point::new(info_x, layout.info_y(0)),
         "Kernel",
+        state.status(),
     )
     .draw(framebuffer);
 
-    InfoRow::ready(
+    InfoRow::status(
         Point::new(info_x, layout.info_y(1)),
         "Bootloader",
+        state.status(),
     )
     .draw(framebuffer);
 
-    InfoRow::ready(
+    InfoRow::status(
         Point::new(info_x, layout.info_y(2)),
         "Graphics",
+        state.status(),
     )
     .draw(framebuffer);
 
@@ -148,7 +151,7 @@ pub fn render(
             screen.centered_x(180),
             layout.footer_y(),
         ),
-        "INITIALIZING SYSTEM",
+        state.footer_text(),
         TextStyle::SMALL,
     );
 

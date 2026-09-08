@@ -20,6 +20,15 @@ impl BootState {
         }
     }
 
+    pub fn footer_text(self) -> &'static str {
+        match self {
+            Self::Initializing => "INITIALIZING SYSTEM",
+            Self::Ready => "SYSTEM READY",
+            Self::Warning => "SYSTEM WARNING",
+            Self::Error => "SYSTEM ERROR",
+        }
+    }
+
     pub fn from_boot_info(boot_info: &BootInfo) -> Self {
         if boot_info.framebuffer_addr == 0
             || boot_info.framebuffer_size == 0

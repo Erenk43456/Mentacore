@@ -38,6 +38,15 @@ impl Status {
             Self::Error => "ERROR",
         }
     }
+
+    pub fn text_style(self) -> super::TextStyle {
+        match self {
+            Self::Initializing => super::TextStyle::INITIALIZING,
+            Self::Ready => super::TextStyle::SUCCESS,
+            Self::Warning => super::TextStyle::WARNING,
+            Self::Error => super::TextStyle::ERROR,
+        }
+    }
 }
 
 pub struct StatusIndicator {
