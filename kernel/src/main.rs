@@ -320,6 +320,59 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"Physical frame allocator OK.\r\n");
 
+    serial_write(b"Testing physical frame allocation/free...\r\n");
+
+    let test_frame = match allocator.allocate_frame() {
+        Some(frame) => frame,
+        None => {
+            serial_write(b"ERROR: Failed to allocate test frame\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    };
+
+    serial_write(b"  Allocated test frame: ");
+    serial_write_hex(test_frame.start_address);
+    serial_write(b"\r\n");
+
+    if allocator
+        .is_frame_used(test_frame)
+        .unwrap_or(false)
+    {
+        serial_write(b"  Test frame marked used.\r\n");
+    } else {
+        serial_write(b"ERROR: Test frame not marked used\r\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    match allocator.free_frame(test_frame) {
+        Ok(()) => {
+            serial_write(b"  Test frame freed.\r\n");
+        }
+
+        Err(()) => {
+            serial_write(b"ERROR: Failed to free test frame\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    if allocator
+        .is_frame_used(test_frame)
+        .unwrap_or(false)
+    {
+        serial_write(b"ERROR: Freed frame still marked used\r\n");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(b"PHYSICAL FRAME FREE TEST OK\r\n");
+
     serial_write(b"Allocated frames before paging: ");
     serial_write_hex(allocator.allocated_count());
     serial_write(b"\r\n");

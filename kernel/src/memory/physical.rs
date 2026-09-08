@@ -162,6 +162,24 @@ impl FrameBitmap {
         }
     }
 
+    pub unsafe fn clear(&mut self, frame: u64) {
+        if frame >= self.frame_count {
+            return;
+        }
+
+        let (byte_index, bit_index) =
+            Self::bit_position(frame);
+
+        unsafe {
+            let ptr = self.byte_ptr(byte_index);
+            let value = ptr.read();
+
+            ptr.write(
+                value & !(1u8 << bit_index)
+            );
+        }
+    }
+
     pub unsafe fn is_used(&self, frame: u64) -> bool {
         if frame >= self.frame_count {
             return true;
@@ -231,6 +249,60 @@ impl PhysicalFrameAllocator {
         }
 
         None
+    }
+
+    pub fn free_frame(
+        &mut self,
+        frame: Frame,
+    ) -> Result<(), ()> {
+        let address = frame.start_address;
+
+        if address & (PAGE_SIZE - 1) != 0 {
+            return Err(());
+        }
+
+        let frame_number =
+            address / PAGE_SIZE;
+
+        if frame_number >= self.bitmap.frame_count() {
+            return Err(());
+        }
+
+        let used = unsafe {
+            self.bitmap.is_used(frame_number)
+        };
+
+        if !used {
+            return Err(());
+        }
+
+        unsafe {
+            self.bitmap.clear(frame_number);
+        }
+
+        Ok(())
+    }
+
+    pub fn is_frame_used(
+        &self,
+        frame: Frame,
+    ) -> Result<bool, ()> {
+        let address = frame.start_address;
+
+        if address & (PAGE_SIZE - 1) != 0 {
+            return Err(());
+        }
+
+        let frame_number =
+            address / PAGE_SIZE;
+
+        if frame_number >= self.bitmap.frame_count() {
+            return Err(());
+        }
+
+        Ok(unsafe {
+            self.bitmap.is_used(frame_number)
+        })
     }
 
     pub fn allocated_count(&self) -> u64 {
