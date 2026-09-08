@@ -10,9 +10,10 @@ use elf::abi::PT_LOAD;
 use elf::endian::AnyEndian;
 use elf::ElfBytes;
 
-use mentacore_boot_protocol::BootInfo;
+use mentacore_boot_protocol::{BootInfo, BOOT_PROTOCOL_VERSION};
 
 use uefi::boot::{self, AllocateType, MemoryType};
+use uefi::mem::memory_map::MemoryMap;
 use uefi::fs::FileSystem;
 use uefi::prelude::*;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
@@ -328,7 +329,7 @@ fn main() -> Status {
     println!();
     println!("Initializing framebuffer...");
 
-    let boot_info = match get_framebuffer_info() {
+    let mut boot_info = match get_framebuffer_info() {
         Ok(info) => info,
         Err(_) => {
             println!("ERROR: Failed to initialize framebuffer.");
@@ -365,6 +366,10 @@ fn main() -> Status {
         boot_info.framebuffer_format
     );
 
+    // ------------------------------------------------------------
+    // Final kernel entry check.
+    // ------------------------------------------------------------
+
     let kernel_ptr = entry as *const u8;
 
     unsafe {
@@ -383,16 +388,29 @@ fn main() -> Status {
 
     // ------------------------------------------------------------
     // Kernel handoff.
-    //
-    // RSP = kernel stack
-    // RDI = BootInfo pointer
-    // RIP = kernel entry
     // ------------------------------------------------------------
 
     println!();
     println!("Preparing kernel handoff...");
-    println!("Jumping to kernel...");
-    println!();
+    println!("Exiting UEFI boot services...");
+
+    let memory_map = unsafe {
+        boot::exit_boot_services(None)
+    };
+
+    let memory_map_meta = memory_map.meta();
+
+    boot_info.memory_map_addr =
+        memory_map.buffer().as_ptr() as u64;
+
+    boot_info.memory_map_size =
+        memory_map_meta.map_size as u64;
+
+    boot_info.memory_map_descriptor_size =
+        memory_map_meta.desc_size as u32;
+
+    boot_info.memory_map_descriptor_version =
+        memory_map_meta.desc_version;
 
     unsafe {
         jump_to_kernel(
@@ -474,16 +492,19 @@ fn get_framebuffer_info() -> Result<BootInfo, ()> {
     };
 
     Ok(BootInfo {
-        version: mentacore_boot_protocol::BOOT_PROTOCOL_VERSION,
+        version: BOOT_PROTOCOL_VERSION,
 
         framebuffer_addr,
         framebuffer_size,
-
         framebuffer_width: width as u32,
         framebuffer_height: height as u32,
         framebuffer_stride: stride as u32,
-
         framebuffer_format,
+
+        memory_map_addr: 0,
+        memory_map_size: 0,
+        memory_map_descriptor_size: 0,
+        memory_map_descriptor_version: 0,
     })
 }
 

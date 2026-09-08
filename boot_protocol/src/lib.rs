@@ -19,4 +19,9 @@ pub struct BootInfo {
     // 2 = Bitmask
     // 3 = BltOnly
     pub framebuffer_format: u32,
+
+    pub memory_map_addr: u64,
+    pub memory_map_size: u64,
+    pub memory_map_descriptor_size: u32,
+    pub memory_map_descriptor_version: u32,
 }
