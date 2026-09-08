@@ -8,6 +8,18 @@ pub struct Frame {
     pub start_address: u64,
 }
 
+impl Frame {
+    pub fn new(start_address: u64) -> Option<Self> {
+        if start_address & (PAGE_SIZE - 1) != 0 {
+            return None;
+        }
+
+        Some(Self {
+            start_address,
+        })
+    }
+}
+
 pub struct PhysicalFrameAllocator<'a> {
     memory_map: MemoryMap<'a>,
     current_descriptor: usize,
@@ -30,9 +42,7 @@ impl<'a> PhysicalFrameAllocator<'a> {
     pub fn allocate_frame(&mut self) -> Option<Frame> {
         loop {
             if self.remaining_frames > 0 {
-                let frame = Frame {
-                    start_address: self.next_frame,
-                };
+                let frame = Frame::new(self.next_frame)?;
 
                 self.next_frame += PAGE_SIZE;
                 self.remaining_frames -= 1;
