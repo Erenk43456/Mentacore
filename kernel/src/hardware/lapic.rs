@@ -150,6 +150,15 @@ impl Lapic {
         }
     }
 
+    pub unsafe fn set_lvt_timer(&self, value: u32) {
+        unsafe {
+            self.write_u32(
+                LAPIC_LVT_TIMER_OFFSET,
+                value,
+            );
+        }
+    }
+
     pub unsafe fn lvt_error(&self) -> u32 {
         unsafe {
             self.read_u32(

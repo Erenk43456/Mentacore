@@ -505,39 +505,42 @@ extern "C" fn timer_irq_dispatch() {
 
 #[unsafe(naked)]
 extern "C" fn lapic_timer_entry() -> ! {
-    unsafe {
-        core::arch::naked_asm!(
-            "push rax",
-            "push rcx",
-            "push rdx",
-            "push rsi",
-            "push rdi",
-            "push r8",
-            "push r9",
-            "push r10",
-            "push r11",
+    core::arch::naked_asm!(
+        "push rax",
+        "push rcx",
+        "push rdx",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
 
-            "call {dispatch}",
+        "call {dispatch}",
 
-            "pop r11",
-            "pop r10",
-            "pop r9",
-            "pop r8",
-            "pop rdi",
-            "pop rsi",
-            "pop rdx",
-            "pop rcx",
-            "pop rax",
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rdi",
+        "pop rsi",
+        "pop rdx",
+        "pop rcx",
+        "pop rax",
 
-            "iretq",
+        "iretq",
 
-            dispatch = sym lapic_timer_dispatch,
-        );
-    }
+        dispatch = sym lapic_timer_dispatch,
+    );
 }
 
 extern "C" fn lapic_timer_dispatch() {
-    LAPIC_TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+    let ticks =
+        LAPIC_TIMER_TICKS.fetch_add(1, Ordering::Relaxed) + 1;
+
+    serial_write(b"LAPIC TIMER INTERRUPT: ");
+    serial_write_hex(ticks);
+    serial_write(b"\r\n");
 
     unsafe {
         crate::hardware::lapic::write_global_eoi();

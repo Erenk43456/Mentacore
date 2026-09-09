@@ -1527,10 +1527,47 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"DISPLAY OK\r\n");
 
+    serial_write(b"Preparing LAPIC one-shot timer...\r\n");
+
+    unsafe {
+        // Keep the timer masked while programming it.
+        lapic.set_lvt_timer(
+            hardware::lapic::LAPIC_LVT_MASKED
+                | interrupts::LAPIC_TIMER_VECTOR as u32,
+        );
+
+        // Divide-by-1.
+        lapic.set_timer_divide(0x0000_000B);
+
+        // Give ourselves plenty of time before the interrupt fires.
+        lapic.set_timer_initial_count(100_000_000);
+    }
+
+    let lapic_timer_current =
+        unsafe {
+            lapic.timer_current_count()
+        };
+
+    serial_write(b"LAPIC TIMER CURRENT COUNT: ");
+    serial_write_hex(lapic_timer_current as u64);
+    serial_write(b"\r\n");
+
+    serial_write(b"Arming LAPIC one-shot timer...\r\n");
+
+    unsafe {
+        // Vector 0x40, one-shot mode, unmasked.
+        lapic.set_lvt_timer(
+            interrupts::LAPIC_TIMER_VECTOR as u32,
+        );
+    }
+
+    serial_write(b"LAPIC TIMER ARMED\r\n");
     serial_write(b"Enabling hardware interrupts...\r\n");
+
     unsafe {
         asm!("sti");
     }
+
     serial_write(b"Hardware interrupts enabled.\r\n");
 
     serial_write(b"Calibrating TSC...\r\n");
