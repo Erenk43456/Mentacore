@@ -40,54 +40,6 @@ fn serial_write_hex(value: u64) {
     }
 }
 
-fn debug_ist1_stack() {
-    let expected = crate::cpu::ist1_stack_top();
-    let actual = crate::cpu::tss_ist1();
-
-    serial_write(b"IST1 expected top: ");
-    serial_write_hex(expected);
-    serial_write(b"\r\n");
-
-    serial_write(b"TSS IST1: ");
-    serial_write_hex(actual);
-    serial_write(b"\r\n");
-
-    if expected == actual {
-        serial_write(b"IST1 TSS CONFIG OK\r\n");
-    } else {
-        serial_write(b"IST1 TSS CONFIG FAILED\r\n");
-    }
-
-    unsafe {
-        let idt_entry =
-            core::ptr::addr_of!(IDT[8])
-                as *const u8;
-
-        // options field is at byte offset 4.
-        let options =
-            core::ptr::read_unaligned(
-                idt_entry.add(4) as *const u16
-            );
-
-        serial_write(b"IDT[8] options: ");
-        serial_write_hex(options as u64);
-        serial_write(b"\r\n");
-
-        let ist =
-            (options & 0x0007) as u8;
-
-        serial_write(b"IDT[8] IST: ");
-        serial_write_hex(ist as u64);
-        serial_write(b"\r\n");
-
-        if ist == 1 {
-            serial_write(b"IDT DOUBLE FAULT IST CONFIG OK\r\n");
-        } else {
-            serial_write(b"IDT DOUBLE FAULT IST CONFIG FAILED\r\n");
-        }
-    }
-}
-
 #[repr(C, packed)]
 struct IdtEntry {
     offset_low: u16,
@@ -154,9 +106,11 @@ pub fn timer_ticks() -> u64 {
 
 pub const LAPIC_TIMER_VECTOR: u8 = 0x40;
 
+#[cfg(feature = "kernel-tests")]
 static LAPIC_TIMER_TICKS: AtomicU64 =
     AtomicU64::new(0);
 
+#[cfg(feature = "kernel-tests")]
 pub fn lapic_timer_ticks() -> u64 {
     LAPIC_TIMER_TICKS.load(Ordering::Relaxed)
 }
@@ -487,17 +441,10 @@ unsafe extern "C" fn timer_irq_entry() -> ! {
 }
 
 extern "C" fn timer_irq_dispatch() {
-    let ticks =
-        TIMER_TICKS.fetch_add(
-            1,
-            Ordering::Relaxed,
-        ) + 1;
-
-    if ticks % 100 == 0 {
-        serial_write(b"Timer ticks: ");
-        serial_write_hex(ticks);
-        serial_write(b"\r\n");
-    }
+    TIMER_TICKS.fetch_add(
+        1,
+        Ordering::Relaxed,
+    );
 
     unsafe {
         crate::hardware::pic::send_eoi(0);
@@ -536,12 +483,11 @@ extern "C" fn lapic_timer_entry() -> ! {
 }
 
 extern "C" fn lapic_timer_dispatch() {
-    let ticks =
-        LAPIC_TIMER_TICKS.fetch_add(1, Ordering::Relaxed) + 1;
-
-    serial_write(b"LAPIC TIMER INTERRUPT: ");
-    serial_write_hex(ticks);
-    serial_write(b"\r\n");
+    #[cfg(feature = "kernel-tests")]
+    LAPIC_TIMER_TICKS.fetch_add(
+        1,
+        Ordering::Relaxed,
+    );
 
     unsafe {
         crate::hardware::lapic::write_global_eoi();
@@ -773,7 +719,5 @@ pub unsafe fn init(
             in(reg) &idt_pointer,
             options(readonly, nostack, preserves_flags)
         );
-
-        debug_ist1_stack();
     }
 }

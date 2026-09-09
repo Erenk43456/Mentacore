@@ -10,6 +10,7 @@ mod interrupts;
 mod memory;
 mod hardware;
 mod sync;
+#[cfg(feature = "kernel-tests")]
 mod tests;
 
 use core::arch::asm;
@@ -68,15 +69,14 @@ pub extern "C" fn _start(
         )
     };
 
-    // ---------------------------------------------------------
-    // Test runner
-    // ---------------------------------------------------------
-
+    #[cfg(feature = "kernel-tests")]
     tests::write_header();
 
+    #[cfg(feature = "kernel-tests")]
     let mut test_runner =
         tests::KernelTestRunner::new();
 
+    #[cfg(feature = "kernel-tests")]
     test_runner.run_physical(
         &mut allocator
     );
@@ -92,6 +92,7 @@ pub extern "C" fn _start(
         );
     }
 
+    #[cfg(feature = "kernel-tests")]
     test_runner.run_paging(
         &mut allocator
     );
@@ -148,10 +149,6 @@ pub extern "C" fn _start(
     // LAPIC one-shot timer
     // ---------------------------------------------------------
 
-    debug::write(
-        b"Preparing LAPIC one-shot timer...\r\n"
-    );
-
     unsafe {
         // Keep the timer masked while programming it.
         lapic.set_lvt_timer(
@@ -170,28 +167,7 @@ pub extern "C" fn _start(
         lapic.set_timer_initial_count(
             100_000_000
         );
-    }
 
-    let lapic_timer_current =
-        unsafe {
-            lapic.timer_current_count()
-        };
-
-    debug::write(
-        b"LAPIC TIMER CURRENT COUNT: "
-    );
-
-    debug::write_hex(
-        lapic_timer_current as u64
-    );
-
-    debug::write(b"\r\n");
-
-    debug::write(
-        b"Arming LAPIC one-shot timer...\r\n"
-    );
-
-    unsafe {
         // Vector 0x40, one-shot mode, unmasked.
         lapic.set_lvt_timer(
             interrupts::LAPIC_TIMER_VECTOR
@@ -203,10 +179,6 @@ pub extern "C" fn _start(
         b"LAPIC TIMER ARMED\r\n"
     );
 
-    debug::write(
-        b"Enabling hardware interrupts...\r\n"
-    );
-
     unsafe {
         asm!("sti");
     }
@@ -216,21 +188,17 @@ pub extern "C" fn _start(
     );
 
     // ---------------------------------------------------------
-    // Runtime-dependent tests
-    // ---------------------------------------------------------
-    test_runner.run_heap();
-
-    test_runner.run_interrupts();
-
-    test_runner.run_sync();
-
-    test_runner.run_tsc();
-
-    // ---------------------------------------------------------
-    // Final test result
+    // Kernel tests
     // ---------------------------------------------------------
 
-    test_runner.finish();
+    #[cfg(feature = "kernel-tests")]
+    {
+        test_runner.run_heap();
+        test_runner.run_interrupts();
+        test_runner.run_sync();
+        test_runner.run_tsc();
+        test_runner.finish();
+    }
 
     // ---------------------------------------------------------
     // Kernel idle loop

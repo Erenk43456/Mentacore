@@ -8,12 +8,6 @@ pub unsafe fn initialize(
     allocator: &mut PhysicalFrameAllocator,
     boot_info: &BootInfo,
 ) {
-    debug::write(b"Allocated frames before paging: ");
-    debug::write_hex(allocator.allocated_count());
-    debug::write(b"\r\n");
-
-    debug::write(b"Initializing paging...\r\n");
-
     match unsafe {
         memory::paging::init(
             allocator,
@@ -24,14 +18,6 @@ pub unsafe fn initialize(
             debug::write(
                 b"Paging initialized.\r\n"
             );
-
-            debug::write(
-                b"Allocated frames after paging: "
-            );
-            debug::write_hex(
-                allocator.allocated_count()
-            );
-            debug::write(b"\r\n");
         }
 
         Err(()) => {

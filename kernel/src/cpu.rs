@@ -1,45 +1,4 @@
-use core::arch::{asm, naked_asm};
-
-const COM1: u16 = 0x3F8;
-
-fn serial_write_byte(byte: u8) {
-    unsafe {
-        asm!(
-            "out dx, al",
-            in("dx") COM1,
-            in("al") byte,
-            options(nostack, preserves_flags)
-        );
-    }
-}
-
-fn serial_write(message: &[u8]) {
-    for &byte in message {
-        serial_write_byte(byte);
-    }
-}
-
-fn serial_write_hex(value: u64) {
-    const HEX: &[u8; 16] =
-        b"0123456789abcdef";
-
-    serial_write(b"0x");
-
-    for i in (0..16).rev() {
-        let digit =
-            ((value >> (i * 4)) & 0xF) as usize;
-
-        serial_write_byte(HEX[digit]);
-    }
-}
-
-fn serial_write_bool(value: bool) {
-    if value {
-        serial_write(b"YES");
-    } else {
-        serial_write(b"NO");
-    }
-}
+use core::arch::naked_asm;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -53,17 +12,6 @@ struct GdtEntry {
 }
 
 impl GdtEntry {
-    const fn null() -> Self {
-        Self {
-            limit_low: 0,
-            base_low: 0,
-            base_middle: 0,
-            access: 0,
-            granularity: 0,
-            base_high: 0,
-        }
-    }
-
     const fn code() -> Self {
         Self {
             limit_low: 0xFFFF,
@@ -87,6 +35,7 @@ impl GdtEntry {
     }
 }
 
+#[cfg(feature = "verbose-boot")]
 #[derive(Clone, Copy)]
 pub struct CpuInfo {
     pub vendor: [u8; 12],
@@ -101,6 +50,7 @@ pub struct CpuInfo {
     pub has_xsave: bool,
 }
 
+#[cfg(feature = "verbose-boot")]
 impl CpuInfo {
     pub fn detect() -> Self {
         let (max_basic_leaf, ebx, ecx, edx) =
@@ -163,6 +113,7 @@ impl CpuInfo {
     }
 }
 
+#[cfg(feature = "verbose-boot")]
 #[inline]
 fn cpuid(leaf: u32) -> (u32, u32, u32, u32) {
     let result = core::arch::x86_64::__cpuid(leaf);
@@ -193,6 +144,7 @@ pub fn read_msr(msr: u32) -> u64 {
     ((high as u64) << 32) | (low as u64)
 }
 
+#[cfg(feature = "kernel-tests")]
 #[inline]
 pub fn read_tsc() -> u64 {
     unsafe {
@@ -211,6 +163,7 @@ pub fn read_tsc() -> u64 {
     }
 }
 
+#[cfg(feature = "kernel-tests")]
 pub fn calibrate_tsc() -> u64 {
     const CALIBRATION_TICKS: u64 = 100;
 
@@ -456,13 +409,15 @@ fn write_tss_descriptor(
 }
 
 fn initialize_tss_stacks() {
-    let kernel_stack_top =
-        core::ptr::addr_of!(KERNEL_STACK) as u64
-            + KERNEL_STACK_SIZE as u64;
+    let (kernel_stack_top, ist1_stack_top) = unsafe {
+        (
+            core::ptr::addr_of!(KERNEL_STACK.data) as u64
+                + KERNEL_STACK_SIZE as u64,
 
-    let ist1_stack_top =
-        core::ptr::addr_of!(IST1_STACK) as u64
-            + IST1_STACK_SIZE as u64;
+            core::ptr::addr_of!(IST1_STACK.data) as u64
+                + IST1_STACK_SIZE as u64,
+        )
+    };
 
     unsafe {
         let tss_ptr =
@@ -486,6 +441,7 @@ pub fn ist1_stack_top() -> u64 {
         + IST1_STACK_SIZE as u64
 }
 
+#[cfg(feature = "verbose-boot")]
 pub fn tss_ist1() -> u64 {
     unsafe {
         core::ptr::read_unaligned(
@@ -505,7 +461,7 @@ unsafe extern "C" fn load_gdt_and_segments(
         "lgdt [rdi]",
 
         // Reload CS with our kernel code segment.
-        "push 0x08",
+        "push {code_selector}",
         "lea rax, [rip + 1f]",
         "push rax",
         "retfq",
@@ -513,12 +469,15 @@ unsafe extern "C" fn load_gdt_and_segments(
         "1:",
 
         // Reload data segments.
-        "mov ax, 0x10",
+        "mov ax, {data_selector}",
         "mov ds, ax",
         "mov es, ax",
         "mov ss, ax",
 
         "ret",
+
+        code_selector = const KERNEL_CODE_SELECTOR,
+        data_selector = const KERNEL_DATA_SELECTOR,
     );
 }
 
@@ -572,12 +531,14 @@ impl InterruptState {
         }
     }
 
+    #[cfg(feature = "kernel-tests")]
     #[inline]
     pub fn were_enabled(self) -> bool {
         self.rflags & (1 << 9) != 0
     }
 }
 
+#[cfg(feature = "kernel-tests")]
 #[inline]
 pub fn interrupts_enabled() -> bool {
     let rflags: u64;
@@ -592,150 +553,6 @@ pub fn interrupts_enabled() -> bool {
     }
 
     rflags & (1 << 9) != 0
-}
-
-pub fn test_interrupt_state() {
-    serial_write(
-        b"Testing interrupt state primitives...\r\n"
-    );
-
-    // At this point the interrupt system
-    // must already be active.
-    if !interrupts_enabled() {
-        serial_write(
-            b"  Interrupts initially disabled.\r\n"
-        );
-
-        unsafe {
-            core::arch::asm!(
-                "sti",
-                options(nostack)
-            );
-        }
-    }
-
-    if !interrupts_enabled() {
-        serial_write(
-            b"INTERRUPT STATE TEST FAILED: could not enable interrupts\r\n"
-        );
-
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    serial_write(
-        b"  Interrupts initially enabled.\r\n"
-    );
-
-    // Verify save_and_disable() records
-    // the enabled state and actually disables
-    // interrupts.
-    let enabled_state =
-        InterruptState::save_and_disable();
-
-    if !enabled_state.were_enabled() {
-        serial_write(
-            b"INTERRUPT STATE TEST FAILED: enabled state not captured\r\n"
-        );
-
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    if interrupts_enabled() {
-        serial_write(
-            b"INTERRUPT STATE TEST FAILED: CLI did not disable interrupts\r\n"
-        );
-
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    serial_write(
-        b"  Interrupts disabled successfully.\r\n"
-    );
-
-    // Restore the state that existed before
-    // save_and_disable().
-    enabled_state.restore();
-
-    if !interrupts_enabled() {
-        serial_write(
-            b"INTERRUPT STATE TEST FAILED: STI did not restore interrupts\r\n"
-        );
-
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    serial_write(
-        b"  Interrupt state restored successfully.\r\n"
-    );
-
-    // Now verify that an already-disabled
-    // state stays disabled.
-    unsafe {
-        core::arch::asm!(
-            "cli",
-            options(nostack)
-        );
-    }
-
-    if interrupts_enabled() {
-        serial_write(
-            b"INTERRUPT STATE TEST FAILED: could not enter disabled state\r\n"
-        );
-
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    let disabled_state =
-        InterruptState::save_and_disable();
-
-    if disabled_state.were_enabled() {
-        serial_write(
-            b"INTERRUPT STATE TEST FAILED: disabled state not captured\r\n"
-        );
-
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    disabled_state.restore();
-
-    if interrupts_enabled() {
-        serial_write(
-            b"INTERRUPT STATE TEST FAILED: disabled state was incorrectly restored as enabled\r\n"
-        );
-
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    serial_write(
-        b"  Disabled state preserved successfully.\r\n"
-    );
-
-    // Leave the system in the normal
-    // interrupt-enabled state.
-    unsafe {
-        core::arch::asm!(
-            "sti",
-            options(nostack)
-        );
-    }
-
-    serial_write(
-        b"INTERRUPT STATE TEST OK\r\n"
-    );
 }
 
 #[inline]
@@ -753,74 +570,6 @@ pub fn halt() {
 }
 
 pub fn init() {
-    let cpu = CpuInfo::detect();
-
-    serial_write(b"CPU vendor: ");
-    serial_write(&cpu.vendor);
-    serial_write(b"\r\n");
-
-    serial_write(b"CPU max basic leaf: ");
-    serial_write_hex(
-        cpu.max_basic_leaf as u64
-    );
-    serial_write(b"\r\n");
-
-    serial_write(b"CPU APIC: ");
-    serial_write_bool(cpu.has_apic);
-    serial_write(b"\r\n");
-
-    serial_write(b"CPU x2APIC: ");
-    serial_write_bool(cpu.has_x2apic);
-    serial_write(b"\r\n");
-
-    serial_write(b"CPU TSC: ");
-    serial_write_bool(cpu.has_tsc);
-    serial_write(b"\r\n");
-
-    if cpu.has_tsc {
-        let tsc_start = read_tsc();
-
-        for _ in 0..1000 {
-            core::hint::spin_loop();
-        }
-
-        let tsc_end = read_tsc();
-
-        serial_write(b"TSC start: ");
-        serial_write_hex(tsc_start);
-        serial_write(b"\r\n");
-
-        serial_write(b"TSC end: ");
-        serial_write_hex(tsc_end);
-        serial_write(b"\r\n");
-
-        if tsc_end > tsc_start {
-            serial_write(
-                b"TSC READ TEST OK\r\n"
-            );
-        } else {
-            serial_write(
-                b"TSC READ TEST FAILED\r\n"
-            );
-        }
-    }
-
-    serial_write(b"CPU MSR: ");
-    serial_write_bool(cpu.has_msr);
-    serial_write(b"\r\n");
-
-    serial_write(b"CPU SSE: ");
-    serial_write_bool(cpu.has_sse);
-    serial_write(b"\r\n");
-
-    serial_write(b"CPU SSE2: ");
-    serial_write_bool(cpu.has_sse2);
-    serial_write(b"\r\n");
-
-    serial_write(b"CPU XSAVE: ");
-    serial_write_bool(cpu.has_xsave);
-    serial_write(b"\r\n");
-
     unsafe {
         GDT.entries = [0; 5];
     }

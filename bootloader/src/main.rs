@@ -218,23 +218,6 @@ fn main() -> Status {
             continue;
         }
 
-        let segment_end = match segment.p_vaddr.checked_add(segment.p_memsz) {
-            Some(end) => end,
-            None => {
-                println!("ERROR: Segment address overflow.");
-
-                loop {
-                    core::hint::spin_loop();
-                }
-            }
-        };
-
-        println!(
-            "Loading segment: {:#018x} - {:#018x}",
-            segment.p_vaddr,
-            segment_end
-        );
-
         let data = match elf.segment_data(&segment) {
             Ok(data) => data,
             Err(_) => {
@@ -263,13 +246,10 @@ fn main() -> Status {
                 );
             }
         }
-
-        println!("  Segment loaded.");
     }
 
     println!();
     println!("All kernel segments loaded.");
-    println!("Kernel entry: {:#018x}", entry);
 
     // ------------------------------------------------------------
     // Allocate kernel stack.
@@ -367,26 +347,6 @@ fn main() -> Status {
     );
 
     // ------------------------------------------------------------
-    // Final kernel entry check.
-    // ------------------------------------------------------------
-
-    let kernel_ptr = entry as *const u8;
-
-    unsafe {
-        println!(
-            "Kernel bytes at entry: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-            kernel_ptr.read(),
-            kernel_ptr.add(1).read(),
-            kernel_ptr.add(2).read(),
-            kernel_ptr.add(3).read(),
-            kernel_ptr.add(4).read(),
-            kernel_ptr.add(5).read(),
-            kernel_ptr.add(6).read(),
-            kernel_ptr.add(7).read(),
-        );
-    }
-
-    // ------------------------------------------------------------
     // Kernel handoff.
     // ------------------------------------------------------------
 
@@ -443,13 +403,6 @@ fn get_framebuffer_info() -> Result<BootInfo, ()> {
 
     const TARGET_WIDTH: usize = 1920;
     const TARGET_HEIGHT: usize = 1080;
-
-    println!("Searching for preferred GOP mode...");
-    println!(
-        "Preferred resolution: {}x{}",
-        TARGET_WIDTH,
-        TARGET_HEIGHT
-    );
 
     let mut selected_mode = None;
 

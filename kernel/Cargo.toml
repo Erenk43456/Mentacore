@@ -3,6 +3,10 @@ name = "mentacore-kernel"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+kernel-tests = []
+verbose-boot = []
+
 [dependencies]
 mentacore-boot-protocol = { path = "../boot_protocol" }
 embedded-graphics = "0.8"

@@ -16,6 +16,7 @@ $Qemu           = "C:\Program Files\qemu\qemu-system-x86_64.exe"
 $FirmwareCode   = "C:\Program Files\qemu\share\edk2-x86_64-code.fd"
 
 $TestLog        = Join-Path $ProjectRoot "target\mentacore-test.log"
+$QemuPidFile    = Join-Path $ProjectRoot "target\mentacore-qemu.pid"
 
 Write-Host ""
 Write-Host "========================================"
@@ -31,7 +32,7 @@ Set-Location $ProjectRoot
 
 Write-Host "[1/6] Building kernel..." -ForegroundColor Cyan
 
-cargo build -p mentacore-kernel --target x86_64-unknown-none
+cargo build -p mentacore-kernel --features kernel-tests --target x86_64-unknown-none
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[FAIL] Kernel build failed." -ForegroundColor Red
@@ -132,6 +133,10 @@ if (Test-Path $TestLog) {
     Remove-Item $TestLog -Force
 }
 
+if (Test-Path $QemuPidFile) {
+    Remove-Item $QemuPidFile -Force
+}
+
 New-Item `
     -ItemType File `
     -Path $TestLog `
@@ -152,16 +157,24 @@ $QemuArguments = @(
     "q35"
     "-m"
     "512M"
+
     "-drive"
     "if=pflash,format=raw,readonly=on,file=$FirmwareCode"
+
     "-drive"
     "if=pflash,format=raw,file=$VarsFile"
+
     "-drive"
     "file=fat:rw:$EspRoot,format=raw"
+
     "-boot"
     "order=c"
+
     "-serial"
     "file:$TestLog"
+
+    "-pidfile"
+    $QemuPidFile
 )
 
 $QemuJob = Start-Job -ScriptBlock {
@@ -213,15 +226,61 @@ while ($ElapsedSeconds -lt $TimeoutSeconds) {
 }
 
 # ------------------------------------------------------------
-# Cleanup
+# Stop QEMU
 # ------------------------------------------------------------
 
-if (-not $TestPassed) {
+if ($TestPassed -or $TestFailed) {
+
+    if (Test-Path $QemuPidFile) {
+
+        $QemuPid = Get-Content `
+            -Path $QemuPidFile `
+            -Raw `
+            -ErrorAction SilentlyContinue
+
+        $QemuPid = $QemuPid.Trim()
+
+        if ($QemuPid -match '^\d+$') {
+
+            Stop-Process `
+                -Id ([int]$QemuPid) `
+                -Force `
+                -ErrorAction SilentlyContinue
+        }
+    }
 
     Stop-Job `
         -Id $QemuJob.Id `
         -ErrorAction SilentlyContinue
 }
+else {
+
+    Stop-Job `
+        -Id $QemuJob.Id `
+        -ErrorAction SilentlyContinue
+
+    if (Test-Path $QemuPidFile) {
+
+        $QemuPid = Get-Content `
+            -Path $QemuPidFile `
+            -Raw `
+            -ErrorAction SilentlyContinue
+
+        $QemuPid = $QemuPid.Trim()
+
+        if ($QemuPid -match '^\d+$') {
+
+            Stop-Process `
+                -Id ([int]$QemuPid) `
+                -Force `
+                -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# ------------------------------------------------------------
+# Collect QEMU output
+# ------------------------------------------------------------
 
 $JobOutput = Receive-Job `
     -Id $QemuJob.Id `
@@ -234,13 +293,26 @@ Remove-Job `
 
 Start-Sleep -Milliseconds 500
 
+# ------------------------------------------------------------
+# Read final test log
+# ------------------------------------------------------------
+
 $FinalLog = ""
 
 if (Test-Path $TestLog) {
+
     $FinalLog = Get-Content `
         -Path $TestLog `
         -Raw `
         -ErrorAction SilentlyContinue
+}
+
+# ------------------------------------------------------------
+# Cleanup PID file
+# ------------------------------------------------------------
+
+if (Test-Path $QemuPidFile) {
+    Remove-Item $QemuPidFile -Force -ErrorAction SilentlyContinue
 }
 
 # ------------------------------------------------------------
@@ -258,6 +330,7 @@ if ($TestPassed) {
     Write-Host ""
 
     if ($FinalLog -match "RESULT:\s*(\d+)\/(\d+)\s+TESTS PASSED") {
+
         $Passed = $Matches[1]
         $Total  = $Matches[2]
 
@@ -274,14 +347,17 @@ Write-Host "FAIL" -ForegroundColor Red
 Write-Host ""
 
 if ($TestFailed) {
+
     Write-Host "Reason: Kernel reported test failure." `
         -ForegroundColor Red
 }
 elseif ($ElapsedSeconds -ge $TimeoutSeconds) {
+
     Write-Host "Reason: Test timeout ($TimeoutSeconds seconds)." `
         -ForegroundColor Red
 }
 else {
+
     Write-Host "Reason: QEMU test process failed before tests completed." `
         -ForegroundColor Red
 }
@@ -289,11 +365,22 @@ else {
 Write-Host ""
 
 if ($JobOutput) {
+
     Write-Host "QEMU process output:"
+
     $JobOutput | ForEach-Object {
         Write-Host $_
     }
 
+    Write-Host ""
+}
+
+if ($FinalLog) {
+
+    Write-Host "Kernel test log:"
+    Write-Host ""
+
+    Write-Host $FinalLog
     Write-Host ""
 }
 

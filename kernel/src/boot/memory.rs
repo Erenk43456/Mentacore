@@ -8,32 +8,10 @@ use crate::memory::physical::PhysicalFrameAllocator;
 pub unsafe fn initialize(
     boot_info: &BootInfo,
 ) -> PhysicalFrameAllocator {
-    debug::write(b"Memory map received.\r\n");
-
-    debug::write(b"  Address: ");
-    debug::write_hex(boot_info.memory_map_addr);
-    debug::write(b"\r\n");
-
-    debug::write(b"  Size: ");
-    debug::write_hex(boot_info.memory_map_size);
-    debug::write(b"\r\n");
-
-    debug::write(b"  Descriptor size: ");
-    debug::write_hex(
-        boot_info.memory_map_descriptor_size as u64,
-    );
-    debug::write(b"\r\n");
-
-    debug::write(b"  Descriptor version: ");
-    debug::write_hex(
-        boot_info.memory_map_descriptor_version as u64,
-    );
-    debug::write(b"\r\n");
-
-    debug::write(b"Parsing memory map...\r\n");
-
     let memory_map =
-        match MemoryMap::from_boot_info(boot_info) {
+        match unsafe {
+            MemoryMap::from_boot_info(boot_info)
+        } {
             Some(map) => map,
 
             None => {
@@ -53,7 +31,7 @@ pub unsafe fn initialize(
 
             None => {
                 debug::write(
-                    b"No conventional memory found.\r\n"
+                    b"ERROR: No conventional memory found.\r\n"
                 );
 
                 loop {
@@ -61,22 +39,6 @@ pub unsafe fn initialize(
                 }
             }
         };
-
-    debug::write(
-        b"Highest conventional address: "
-    );
-    debug::write_hex(
-        highest_conventional_address
-    );
-    debug::write(b"\r\n");
-
-    debug::write(
-        b"Memory map descriptor count: "
-    );
-    debug::write_hex(
-        memory_map.descriptor_count() as u64
-    );
-    debug::write(b"\r\n");
 
     let frame_count =
         match memory::physical::frame_count_for_address(
@@ -86,7 +48,7 @@ pub unsafe fn initialize(
 
             None => {
                 debug::write(
-                    b"Failed to calculate frame count.\r\n"
+                    b"ERROR: Failed to calculate frame count.\r\n"
                 );
 
                 loop {
@@ -95,7 +57,7 @@ pub unsafe fn initialize(
             }
         };
 
-    let bitmap_size =
+    let _bitmap_size =
         match memory::physical::bitmap_size_bytes(
             frame_count,
         ) {
@@ -103,7 +65,7 @@ pub unsafe fn initialize(
 
             None => {
                 debug::write(
-                    b"Failed to calculate bitmap size.\r\n"
+                    b"ERROR: Failed to calculate bitmap size.\r\n"
                 );
 
                 loop {
@@ -120,7 +82,7 @@ pub unsafe fn initialize(
 
             None => {
                 debug::write(
-                    b"Failed to calculate bitmap page count.\r\n"
+                    b"ERROR: Failed to calculate bitmap page count.\r\n"
                 );
 
                 loop {
@@ -128,18 +90,6 @@ pub unsafe fn initialize(
                 }
             }
         };
-
-    debug::write(b"Physical frame count: ");
-    debug::write_hex(frame_count);
-    debug::write(b"\r\n");
-
-    debug::write(b"Bitmap size: ");
-    debug::write_hex(bitmap_size);
-    debug::write(b" bytes\r\n");
-
-    debug::write(b"Bitmap pages: ");
-    debug::write_hex(bitmap_pages);
-    debug::write(b"\r\n");
 
     let bitmap_address =
         match memory_map.find_conventional_region(
@@ -149,7 +99,7 @@ pub unsafe fn initialize(
 
             None => {
                 debug::write(
-                    b"Failed to find bitmap region.\r\n"
+                    b"ERROR: Failed to find bitmap region.\r\n"
                 );
 
                 loop {
@@ -158,22 +108,17 @@ pub unsafe fn initialize(
             }
         };
 
-    debug::write(
-        b"Bitmap physical address: "
-    );
-    debug::write_hex(bitmap_address);
-    debug::write(b"\r\n");
-
-    let mut frame_bitmap = match
+    let mut frame_bitmap = match unsafe {
         memory::physical::FrameBitmap::new(
             bitmap_address,
             frame_count,
-        ) {
+        )
+    } {
         Some(bitmap) => bitmap,
 
         None => {
             debug::write(
-                b"Failed to create frame bitmap.\r\n"
+                b"ERROR: Failed to create frame bitmap.\r\n"
             );
 
             loop {
@@ -182,17 +127,23 @@ pub unsafe fn initialize(
         }
     };
 
-    frame_bitmap.clear_all();
+    unsafe {
+        frame_bitmap.clear_all();
+    }
 
     // Start with every physical frame marked as used.
     for frame in 0..frame_count {
-        frame_bitmap.set(frame);
+        unsafe {
+            frame_bitmap.set(frame);
+        }
     }
 
     // UEFI Conventional Memory is available.
     for index in 0..memory_map.descriptor_count() {
         let descriptor =
-            match memory_map.descriptor(index) {
+            match unsafe {
+                memory_map.descriptor(index)
+            } {
                 Some(descriptor) => descriptor,
 
                 None => {
@@ -207,10 +158,12 @@ pub unsafe fn initialize(
             };
 
         if descriptor.ty == 7 {
-            frame_bitmap.mark_free_range(
-                descriptor.physical_start,
-                descriptor.number_of_pages,
-            );
+            unsafe {
+                frame_bitmap.mark_free_range(
+                    descriptor.physical_start,
+                    descriptor.number_of_pages,
+                );
+            }
         }
     }
 
@@ -219,19 +172,19 @@ pub unsafe fn initialize(
         bitmap_address / memory::paging::PAGE_SIZE;
 
     for frame in 0..bitmap_pages {
-        frame_bitmap.set(
-            bitmap_frame + frame
-        );
+        unsafe {
+            frame_bitmap.set(
+                bitmap_frame + frame
+            );
+        }
     }
 
     // Physical frame 0 is permanently reserved.
-    frame_bitmap.set(0);
+    unsafe {
+        frame_bitmap.set(0);
+    }
 
-    debug::write(
-        b"Frame bitmap initialized.\r\n"
-    );
-
-    if !frame_bitmap.is_used(0) {
+    if !unsafe { frame_bitmap.is_used(0) } {
         debug::write(
             b"ERROR: Frame 0 is not reserved\r\n"
         );
@@ -244,7 +197,9 @@ pub unsafe fn initialize(
     let bitmap_first_frame =
         bitmap_address / memory::paging::PAGE_SIZE;
 
-    if !frame_bitmap.is_used(bitmap_first_frame) {
+    if !unsafe {
+        frame_bitmap.is_used(bitmap_first_frame)
+    } {
         debug::write(
             b"ERROR: Bitmap frame is not reserved\r\n"
         );
@@ -257,7 +212,9 @@ pub unsafe fn initialize(
     let bitmap_last_frame =
         bitmap_first_frame + bitmap_pages - 1;
 
-    if !frame_bitmap.is_used(bitmap_last_frame) {
+    if !unsafe {
+        frame_bitmap.is_used(bitmap_last_frame)
+    } {
         debug::write(
             b"ERROR: Bitmap last frame is not reserved\r\n"
         );
@@ -267,13 +224,11 @@ pub unsafe fn initialize(
         }
     }
 
-    debug::write(
-        b"Frame bitmap ownership checks OK.\r\n"
-    );
-
     for index in 0..memory_map.descriptor_count() {
         let descriptor =
-            match memory_map.descriptor(index) {
+            match unsafe {
+                memory_map.descriptor(index)
+            } {
                 Some(descriptor) => descriptor,
 
                 None => {
@@ -287,34 +242,16 @@ pub unsafe fn initialize(
                 }
             };
 
-        debug::write(b"  Descriptor ");
-        debug::write_hex(index as u64);
-
-        debug::write(b": type=");
-        debug::write_hex(descriptor.ty as u64);
-
-        debug::write(b" physical=");
-        debug::write_hex(descriptor.physical_start);
-
-        debug::write(b" pages=");
-        debug::write_hex(descriptor.number_of_pages);
-
-        debug::write(b"\r\n");
+        // Descriptor validation/traversal is intentionally
+        // preserved even though normal boot logging is disabled.
+        let _ = descriptor;
     }
-
-    debug::write(
-        b"Memory map parsed successfully.\r\n"
-    );
-
-    debug::write(
-        b"Initializing physical frame allocator...\r\n"
-    );
 
     let allocator =
         PhysicalFrameAllocator::new(frame_bitmap);
 
     debug::write(
-        b"Physical frame allocator OK.\r\n"
+        b"Memory initialized.\r\n"
     );
 
     allocator
