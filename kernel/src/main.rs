@@ -1331,6 +1331,15 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     serial_write_hex(lapic_version as u64);
     serial_write(b"\r\n");
 
+    let lapic_svr =
+        unsafe {
+            lapic.svr()
+        };
+
+    serial_write(b"LAPIC SVR register: ");
+    serial_write_hex(lapic_svr as u64);
+    serial_write(b"\r\n");
+
     serial_write(b"LAPIC REGISTER ACCESS OK\r\n");
 
     serial_write(

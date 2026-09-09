@@ -11,6 +11,10 @@ pub const LAPIC_ID_OFFSET: u64 = 0x020;
 pub const LAPIC_VERSION_OFFSET: u64 = 0x030;
 pub const LAPIC_EOI_OFFSET: u64 = 0x0B0;
 
+pub const LAPIC_SVR_OFFSET: u64 = 0x0F0;
+pub const LAPIC_LVT_TIMER_OFFSET: u64 = 0x320;
+pub const LAPIC_LVT_ERROR_OFFSET: u64 = 0x370;
+
 pub struct Lapic {
     physical_base: u64,
     virtual_base: u64,
@@ -85,6 +89,30 @@ impl Lapic {
     pub unsafe fn version(&self) -> u32 {
         unsafe {
             self.read_u32(LAPIC_VERSION_OFFSET)
+        }
+    }
+
+    pub unsafe fn write_eoi(&self) {
+        unsafe {
+            self.write_u32(
+                LAPIC_EOI_OFFSET,
+                0,
+            );
+        }
+    }
+
+    pub unsafe fn svr(&self) -> u32 {
+        unsafe {
+            self.read_u32(LAPIC_SVR_OFFSET)
+        }
+    }
+
+    pub unsafe fn set_svr(&self, value: u32) {
+        unsafe {
+            self.write_u32(
+                LAPIC_SVR_OFFSET,
+                value,
+            );
         }
     }
 }
