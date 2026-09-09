@@ -1239,6 +1239,27 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         b"CPU state initialized.\r\n"
     );
 
+    serial_write(b"Initializing LAPIC...\r\n");
+
+    match hardware::lapic::Lapic::discover() {
+        Some(lapic) => {
+            serial_write(b"LAPIC MSR: ");
+            serial_write_hex(lapic.msr_value());
+            serial_write(b"\r\n");
+
+            serial_write(b"LAPIC base: ");
+            serial_write_hex(lapic.base());
+            serial_write(b"\r\n");
+
+            serial_write(b"LAPIC enabled: YES\r\n");
+            serial_write(b"LAPIC DISCOVERY OK\r\n");
+        }
+
+        None => {
+            serial_write(b"LAPIC DISCOVERY FAILED\r\n");
+        }
+    }
+
     serial_write(
         b"Initializing interrupt system...\r\n"
     );
