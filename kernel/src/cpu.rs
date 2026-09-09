@@ -175,6 +175,23 @@ fn cpuid(leaf: u32) -> (u32, u32, u32, u32) {
     )
 }
 
+#[inline]
+pub fn read_tsc() -> u64 {
+    unsafe {
+        let low: u32;
+        let high: u32;
+
+        core::arch::asm!(
+            "rdtsc",
+            out("eax") low,
+            out("edx") high,
+            options(nomem, nostack, preserves_flags)
+        );
+
+        ((high as u64) << 32) | (low as u64)
+    }
+}
+
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 struct Tss {
@@ -462,6 +479,30 @@ pub fn init() {
     serial_write(b"CPU TSC: ");
     serial_write_bool(cpu.has_tsc);
     serial_write(b"\r\n");
+
+    if cpu.has_tsc {
+        let tsc_start = read_tsc();
+
+        for _ in 0..1000 {
+            core::hint::spin_loop();
+        }
+
+        let tsc_end = read_tsc();
+
+        serial_write(b"TSC start: ");
+        serial_write_hex(tsc_start);
+        serial_write(b"\r\n");
+
+        serial_write(b"TSC end: ");
+        serial_write_hex(tsc_end);
+        serial_write(b"\r\n");
+
+        if tsc_end > tsc_start {
+            serial_write(b"TSC READ TEST OK\r\n");
+        } else {
+            serial_write(b"TSC READ TEST FAILED\r\n");
+        }
+    }
 
     serial_write(b"CPU MSR: ");
     serial_write_bool(cpu.has_msr);
