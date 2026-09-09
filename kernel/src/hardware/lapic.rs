@@ -75,4 +75,16 @@ impl Lapic {
             write_volatile(address, value);
         }
     }
+
+    pub unsafe fn id(&self) -> u32 {
+        unsafe {
+            self.read_u32(LAPIC_ID_OFFSET)
+        }
+    }
+
+    pub unsafe fn version(&self) -> u32 {
+        unsafe {
+            self.read_u32(LAPIC_VERSION_OFFSET)
+        }
+    }
 }

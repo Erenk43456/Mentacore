@@ -1315,16 +1315,23 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     let lapic_id =
         unsafe {
-            lapic.read_u32(
-                hardware::lapic::LAPIC_ID_OFFSET
-            )
+            lapic.id()
         };
 
     serial_write(b"LAPIC ID register: ");
     serial_write_hex(lapic_id as u64);
     serial_write(b"\r\n");
 
-    serial_write(b"LAPIC MMIO ACCESS OK\r\n");
+    let lapic_version =
+        unsafe {
+            lapic.version()
+        };
+
+    serial_write(b"LAPIC VERSION register: ");
+    serial_write_hex(lapic_version as u64);
+    serial_write(b"\r\n");
+
+    serial_write(b"LAPIC REGISTER ACCESS OK\r\n");
 
     serial_write(
         b"Initializing interrupt system...\r\n"
