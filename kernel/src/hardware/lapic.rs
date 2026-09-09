@@ -6,6 +6,9 @@ const IA32_APIC_BASE_MSR: u32 = 0x1B;
 const APIC_BASE_MASK: u64 = 0xFFFF_FFFF_FFFF_F000;
 const APIC_GLOBAL_ENABLE: u64 = 1 << 11;
 
+pub const LAPIC_VIRTUAL_BASE: u64 =
+    0xFFFF_A000_0000_0000;
+
 pub const LAPIC_ID_OFFSET: u64 = 0x020;
 pub const LAPIC_VERSION_OFFSET: u64 = 0x030;
 pub const LAPIC_EOI_OFFSET: u64 = 0x0B0;
@@ -31,13 +34,15 @@ pub struct Lapic {
 
 impl Lapic {
     pub fn discover() -> Option<Self> {
-        let msr_value = cpu::read_msr(IA32_APIC_BASE_MSR);
+        let msr_value =
+            cpu::read_msr(IA32_APIC_BASE_MSR);
 
         if (msr_value & APIC_GLOBAL_ENABLE) == 0 {
             return None;
         }
 
-        let physical_base = msr_value & APIC_BASE_MASK;
+        let physical_base =
+            msr_value & APIC_BASE_MASK;
 
         if physical_base == 0 {
             return None;
@@ -50,7 +55,10 @@ impl Lapic {
         })
     }
 
-    pub fn set_virtual_base(&mut self, virtual_base: u64) {
+    pub fn set_virtual_base(
+        &mut self,
+        virtual_base: u64,
+    ) {
         self.virtual_base = virtual_base;
     }
 
@@ -66,9 +74,13 @@ impl Lapic {
         self.msr_value
     }
 
-    pub unsafe fn read_u32(&self, offset: u64) -> u32 {
+    pub unsafe fn read_u32(
+        &self,
+        offset: u64,
+    ) -> u32 {
         let address =
-            (self.virtual_base + offset) as *const u32;
+            (self.virtual_base + offset)
+                as *const u32;
 
         unsafe {
             read_volatile(address)
@@ -81,7 +93,8 @@ impl Lapic {
         value: u32,
     ) {
         let address =
-            (self.virtual_base + offset) as *mut u32;
+            (self.virtual_base + offset)
+                as *mut u32;
 
         unsafe {
             write_volatile(address, value);
@@ -96,7 +109,9 @@ impl Lapic {
 
     pub unsafe fn version(&self) -> u32 {
         unsafe {
-            self.read_u32(LAPIC_VERSION_OFFSET)
+            self.read_u32(
+                LAPIC_VERSION_OFFSET
+            )
         }
     }
 
@@ -115,7 +130,10 @@ impl Lapic {
         }
     }
 
-    pub unsafe fn set_svr(&self, value: u32) {
+    pub unsafe fn set_svr(
+        &self,
+        value: u32,
+    ) {
         unsafe {
             self.write_u32(
                 LAPIC_SVR_OFFSET,
@@ -126,23 +144,34 @@ impl Lapic {
 
     pub unsafe fn lvt_timer(&self) -> u32 {
         unsafe {
-            self.read_u32(LAPIC_LVT_TIMER_OFFSET)
+            self.read_u32(
+                LAPIC_LVT_TIMER_OFFSET
+            )
         }
     }
 
     pub unsafe fn lvt_error(&self) -> u32 {
         unsafe {
-            self.read_u32(LAPIC_LVT_ERROR_OFFSET)
+            self.read_u32(
+                LAPIC_LVT_ERROR_OFFSET
+            )
         }
     }
 
-    pub unsafe fn timer_initial_count(&self) -> u32 {
+    pub unsafe fn timer_initial_count(
+        &self,
+    ) -> u32 {
         unsafe {
-            self.read_u32(LAPIC_TIMER_INITIAL_COUNT_OFFSET)
+            self.read_u32(
+                LAPIC_TIMER_INITIAL_COUNT_OFFSET
+            )
         }
     }
 
-    pub unsafe fn set_timer_initial_count(&self, value: u32) {
+    pub unsafe fn set_timer_initial_count(
+        &self,
+        value: u32,
+    ) {
         unsafe {
             self.write_u32(
                 LAPIC_TIMER_INITIAL_COUNT_OFFSET,
@@ -151,24 +180,43 @@ impl Lapic {
         }
     }
 
-    pub unsafe fn timer_current_count(&self) -> u32 {
+    pub unsafe fn timer_current_count(
+        &self,
+    ) -> u32 {
         unsafe {
-            self.read_u32(LAPIC_TIMER_CURRENT_COUNT_OFFSET)
+            self.read_u32(
+                LAPIC_TIMER_CURRENT_COUNT_OFFSET
+            )
         }
     }
 
     pub unsafe fn timer_divide(&self) -> u32 {
         unsafe {
-            self.read_u32(LAPIC_TIMER_DIVIDE_OFFSET)
+            self.read_u32(
+                LAPIC_TIMER_DIVIDE_OFFSET
+            )
         }
     }
 
-    pub unsafe fn set_timer_divide(&self, value: u32) {
+    pub unsafe fn set_timer_divide(
+        &self,
+        value: u32,
+    ) {
         unsafe {
             self.write_u32(
                 LAPIC_TIMER_DIVIDE_OFFSET,
                 value,
             );
         }
+    }
+}
+
+pub unsafe fn write_global_eoi() {
+    let address =
+        (LAPIC_VIRTUAL_BASE + LAPIC_EOI_OFFSET)
+            as *mut u32;
+
+    unsafe {
+        write_volatile(address, 0);
     }
 }

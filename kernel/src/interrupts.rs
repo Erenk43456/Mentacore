@@ -151,6 +151,15 @@ pub fn timer_ticks() -> u64 {
     TIMER_TICKS.load(Ordering::Relaxed)
 }
 
+pub const LAPIC_TIMER_VECTOR: u8 = 0x40;
+
+static LAPIC_TIMER_TICKS: AtomicU64 =
+    AtomicU64::new(0);
+
+pub fn lapic_timer_ticks() -> u64 {
+    LAPIC_TIMER_TICKS.load(Ordering::Relaxed)
+}
+
 #[unsafe(naked)]
 unsafe extern "C" fn divide_error_entry() -> ! {
     core::arch::naked_asm!(
@@ -494,6 +503,47 @@ extern "C" fn timer_irq_dispatch() {
     }
 }
 
+#[unsafe(naked)]
+extern "C" fn lapic_timer_entry() -> ! {
+    unsafe {
+        core::arch::naked_asm!(
+            "push rax",
+            "push rcx",
+            "push rdx",
+            "push rsi",
+            "push rdi",
+            "push r8",
+            "push r9",
+            "push r10",
+            "push r11",
+
+            "call {dispatch}",
+
+            "pop r11",
+            "pop r10",
+            "pop r9",
+            "pop r8",
+            "pop rdi",
+            "pop rsi",
+            "pop rdx",
+            "pop rcx",
+            "pop rax",
+
+            "iretq",
+
+            dispatch = sym lapic_timer_dispatch,
+        );
+    }
+}
+
+extern "C" fn lapic_timer_dispatch() {
+    LAPIC_TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+
+    unsafe {
+        crate::hardware::lapic::write_global_eoi();
+    }
+}
+
 extern "C" fn page_fault_dispatch(
     register_frame: *const u64,
     error_code: u64,
@@ -679,6 +729,12 @@ pub unsafe fn init(
 
         IDT[32].set_handler(
             timer_irq_entry,
+            code_segment,
+            0,
+        );
+
+        IDT[LAPIC_TIMER_VECTOR as usize].set_handler(
+            lapic_timer_entry,
             code_segment,
             0,
         );
