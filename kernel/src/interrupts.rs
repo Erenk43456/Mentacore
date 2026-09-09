@@ -115,29 +115,17 @@ pub fn lapic_timer_ticks() -> u64 {
     LAPIC_TIMER_TICKS.load(Ordering::Relaxed)
 }
 
-#[unsafe(naked)]
-unsafe extern "C" fn divide_error_entry() -> ! {
-    core::arch::naked_asm!(
-        "cli",
-
-        "push rax",
-        "push rcx",
-        "push rdx",
-        "push rsi",
-        "push rdi",
-        "push r8",
-        "push r9",
-        "push r10",
-        "push r11",
-
-        "mov rdi, rsp",
-
-        "call {handler}",
-
-        handler = sym divide_error_dispatch,
-    );
+unsafe extern "C" {
+    fn divide_error_entry() -> !;
+    fn invalid_opcode_entry() -> !;
+    fn double_fault_entry() -> !;
+    fn general_protection_entry() -> !;
+    fn page_fault_entry() -> !;
+    fn timer_irq_entry() -> !;
+    fn lapic_timer_entry() -> !;
 }
 
+#[unsafe(no_mangle)]
 extern "C" fn divide_error_dispatch(
     register_frame: *const u64,
 ) -> ! {
@@ -160,29 +148,7 @@ extern "C" fn divide_error_dispatch(
     }
 }
 
-#[unsafe(naked)]
-unsafe extern "C" fn invalid_opcode_entry() -> ! {
-    core::arch::naked_asm!(
-        "cli",
-
-        "push rax",
-        "push rcx",
-        "push rdx",
-        "push rsi",
-        "push rdi",
-        "push r8",
-        "push r9",
-        "push r10",
-        "push r11",
-
-        "mov rdi, rsp",
-
-        "call {handler}",
-
-        handler = sym invalid_opcode_dispatch,
-    );
-}
-
+#[unsafe(no_mangle)]
 extern "C" fn invalid_opcode_dispatch(
     register_frame: *const u64,
 ) -> ! {
@@ -205,39 +171,7 @@ extern "C" fn invalid_opcode_dispatch(
     }
 }
 
-#[unsafe(naked)]
-unsafe extern "C" fn double_fault_entry() -> ! {
-    core::arch::naked_asm!(
-        "cli",
-
-        // CPU'nun IST1'e geçtikten sonraki RSP'sini
-        // RAX üzerinde geçici olarak sakla.
-        "mov rax, rsp",
-
-        "push rax",
-        "push rcx",
-        "push rdx",
-        "push rsi",
-        "push rdi",
-        "push r8",
-        "push r9",
-        "push r10",
-        "push r11",
-
-        "mov rdi, rsp",
-
-        // CPU-pushed #DF error code
-        "mov rsi, [rsp + 72]",
-
-        // İlk push edilen RAX = CPU'nun IST1 sonrası RSP'si.
-        "mov rdx, [rsp + 64]",
-
-        "call {handler}",
-
-        handler = sym double_fault_dispatch,
-    );
-}
-
+#[unsafe(no_mangle)]
 extern "C" fn double_fault_dispatch(
     register_frame: *const u64,
     error_code: u64,
@@ -313,30 +247,7 @@ extern "C" fn double_fault_dispatch(
     }
 }
 
-#[unsafe(naked)]
-unsafe extern "C" fn general_protection_entry() -> ! {
-    core::arch::naked_asm!(
-        "cli",
-
-        "push rax",
-        "push rcx",
-        "push rdx",
-        "push rsi",
-        "push rdi",
-        "push r8",
-        "push r9",
-        "push r10",
-        "push r11",
-
-        "mov rdi, rsp",
-        "mov rsi, [rsp + 72]",
-
-        "call {handler}",
-
-        handler = sym general_protection_dispatch,
-    );
-}
-
+#[unsafe(no_mangle)]
 extern "C" fn general_protection_dispatch(
     register_frame: *const u64,
     error_code: u64,
@@ -364,82 +275,7 @@ extern "C" fn general_protection_dispatch(
     }
 }
 
-#[unsafe(naked)]
-unsafe extern "C" fn page_fault_entry() -> ! {
-    core::arch::naked_asm!(
-        "cli",
-
-        // Save registers.
-        "push rax",
-        "push rcx",
-        "push rdx",
-        "push rsi",
-        "push rdi",
-        "push r8",
-        "push r9",
-        "push r10",
-        "push r11",
-
-        // Arguments:
-        // RDI = register frame
-        // RSI = CPU error code
-        "mov rdi, rsp",
-        "mov rsi, [rsp + 72]",
-
-        "call {handler}",
-
-        // Restore registers.
-        "pop r11",
-        "pop r10",
-        "pop r9",
-        "pop r8",
-        "pop rdi",
-        "pop rsi",
-        "pop rdx",
-        "pop rcx",
-        "pop rax",
-
-        // Remove CPU-pushed page-fault error code.
-        "add rsp, 8",
-        
-        // Return to the faulting instruction.
-        "iretq",
-
-        handler = sym page_fault_dispatch,
-    );
-}
-
-#[unsafe(naked)]
-unsafe extern "C" fn timer_irq_entry() -> ! {
-    core::arch::naked_asm!(
-        "push rax",
-        "push rcx",
-        "push rdx",
-        "push rsi",
-        "push rdi",
-        "push r8",
-        "push r9",
-        "push r10",
-        "push r11",
-
-        "call {handler}",
-
-        "pop r11",
-        "pop r10",
-        "pop r9",
-        "pop r8",
-        "pop rdi",
-        "pop rsi",
-        "pop rdx",
-        "pop rcx",
-        "pop rax",
-
-        "iretq",
-
-        handler = sym timer_irq_dispatch,
-    );
-}
-
+#[unsafe(no_mangle)]
 extern "C" fn timer_irq_dispatch() {
     TIMER_TICKS.fetch_add(
         1,
@@ -451,37 +287,7 @@ extern "C" fn timer_irq_dispatch() {
     }
 }
 
-#[unsafe(naked)]
-extern "C" fn lapic_timer_entry() -> ! {
-    core::arch::naked_asm!(
-        "push rax",
-        "push rcx",
-        "push rdx",
-        "push rsi",
-        "push rdi",
-        "push r8",
-        "push r9",
-        "push r10",
-        "push r11",
-
-        "call {dispatch}",
-
-        "pop r11",
-        "pop r10",
-        "pop r9",
-        "pop r8",
-        "pop rdi",
-        "pop rsi",
-        "pop rdx",
-        "pop rcx",
-        "pop rax",
-
-        "iretq",
-
-        dispatch = sym lapic_timer_dispatch,
-    );
-}
-
+#[unsafe(no_mangle)]
 extern "C" fn lapic_timer_dispatch() {
     #[cfg(feature = "kernel-tests")]
     LAPIC_TIMER_TICKS.fetch_add(
@@ -494,6 +300,7 @@ extern "C" fn lapic_timer_dispatch() {
     }
 }
 
+#[unsafe(no_mangle)]
 extern "C" fn page_fault_dispatch(
     register_frame: *const u64,
     error_code: u64,

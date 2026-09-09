@@ -1,5 +1,3 @@
-use core::arch::naked_asm;
-
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 struct GdtEntry {
@@ -453,31 +451,9 @@ pub fn tss_ist1() -> u64 {
     }
 }
 
-#[unsafe(naked)]
-unsafe extern "C" fn load_gdt_and_segments(
-    gdt_pointer: *const GdtPointer,
-) {
-    naked_asm!(
-        "lgdt [rdi]",
-
-        // Reload CS with our kernel code segment.
-        "push {code_selector}",
-        "lea rax, [rip + 1f]",
-        "push rax",
-        "retfq",
-
-        "1:",
-
-        // Reload data segments.
-        "mov ax, {data_selector}",
-        "mov ds, ax",
-        "mov es, ax",
-        "mov ss, ax",
-
-        "ret",
-
-        code_selector = const KERNEL_CODE_SELECTOR,
-        data_selector = const KERNEL_DATA_SELECTOR,
+unsafe extern "C" {
+    fn load_gdt_and_segments(
+        gdt_pointer: *const GdtPointer,
     );
 }
 

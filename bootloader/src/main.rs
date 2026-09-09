@@ -469,20 +469,10 @@ fn align_up(value: u64, alignment: u64) -> Option<u64> {
         .map(|value| value & !mask)
 }
 
-unsafe fn jump_to_kernel(
-    entry: u64,
-    stack_top: u64,
-    boot_info: u64,
-) -> ! {
-    unsafe {
-        core::arch::asm!(
-            "mov rsp, {stack}",
-            "mov rdi, {boot_info}",
-            "jmp {entry}",
-            stack = in(reg) stack_top,
-            boot_info = in(reg) boot_info,
-            entry = in(reg) entry,
-            options(noreturn)
-        );
-    }
+unsafe extern "C" {
+    fn jump_to_kernel(
+        entry: u64,
+        stack_top: u64,
+        boot_info: u64,
+    ) -> !;
 }
