@@ -147,6 +147,10 @@ static mut FRAME_ALLOCATOR: *mut () =
 static TIMER_TICKS: AtomicU64 =
     AtomicU64::new(0);
 
+pub fn timer_ticks() -> u64 {
+    TIMER_TICKS.load(Ordering::Relaxed)
+}
+
 #[unsafe(naked)]
 unsafe extern "C" fn divide_error_entry() -> ! {
     core::arch::naked_asm!(

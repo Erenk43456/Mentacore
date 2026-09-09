@@ -1347,12 +1347,24 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     serial_write(b"DISPLAY OK\r\n");
 
     serial_write(b"Enabling hardware interrupts...\r\n");
-
     unsafe {
         asm!("sti");
     }
-
     serial_write(b"Hardware interrupts enabled.\r\n");
+
+    serial_write(b"Calibrating TSC...\r\n");
+
+    let tsc_frequency = cpu::calibrate_tsc();
+
+    serial_write(b"TSC frequency: ");
+    serial_write_hex(tsc_frequency);
+    serial_write(b" Hz\r\n");
+
+    if tsc_frequency != 0 {
+        serial_write(b"TSC CALIBRATION OK\r\n");
+    } else {
+        serial_write(b"TSC CALIBRATION FAILED\r\n");
+    }
 
     loop {
         core::hint::spin_loop();

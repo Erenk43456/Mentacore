@@ -47,3 +47,17 @@ pub unsafe fn set_frequency(frequency: u32) {
         );
     }
 }
+
+pub fn actual_frequency(frequency: u32) -> u32 {
+    if frequency == 0 {
+        return 0;
+    }
+
+    let divisor = PIT_BASE_FREQUENCY / frequency;
+
+    if divisor == 0 || divisor > 0xFFFF {
+        return 0;
+    }
+
+    PIT_BASE_FREQUENCY / divisor
+}
