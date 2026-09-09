@@ -1,4 +1,45 @@
-use core::arch::naked_asm;
+use core::arch::{asm, naked_asm};
+
+const COM1: u16 = 0x3F8;
+
+fn serial_write_byte(byte: u8) {
+    unsafe {
+        asm!(
+            "out dx, al",
+            in("dx") COM1,
+            in("al") byte,
+            options(nostack, preserves_flags)
+        );
+    }
+}
+
+fn serial_write(message: &[u8]) {
+    for &byte in message {
+        serial_write_byte(byte);
+    }
+}
+
+fn serial_write_hex(value: u64) {
+    const HEX: &[u8; 16] =
+        b"0123456789abcdef";
+
+    serial_write(b"0x");
+
+    for i in (0..16).rev() {
+        let digit =
+            ((value >> (i * 4)) & 0xF) as usize;
+
+        serial_write_byte(HEX[digit]);
+    }
+}
+
+fn serial_write_bool(value: bool) {
+    if value {
+        serial_write(b"YES");
+    } else {
+        serial_write(b"NO");
+    }
+}
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -44,6 +85,94 @@ impl GdtEntry {
             base_high: 0,
         }
     }
+}
+
+#[derive(Clone, Copy)]
+pub struct CpuInfo {
+    pub vendor: [u8; 12],
+    pub max_basic_leaf: u32,
+
+    pub has_apic: bool,
+    pub has_x2apic: bool,
+    pub has_tsc: bool,
+    pub has_msr: bool,
+    pub has_sse: bool,
+    pub has_sse2: bool,
+    pub has_xsave: bool,
+}
+
+impl CpuInfo {
+    pub fn detect() -> Self {
+        let (max_basic_leaf, ebx, ecx, edx) =
+            cpuid(0);
+
+        let mut vendor = [0u8; 12];
+
+        vendor[0..4]
+            .copy_from_slice(&ebx.to_le_bytes());
+
+        vendor[4..8]
+            .copy_from_slice(&edx.to_le_bytes());
+
+        vendor[8..12]
+            .copy_from_slice(&ecx.to_le_bytes());
+
+        let (feature_ecx, feature_edx) =
+            if max_basic_leaf >= 1 {
+                let (_, _, ecx, edx) =
+                    cpuid(1);
+
+                (ecx, edx)
+            } else {
+                (0, 0)
+            };
+
+        let has_apic =
+            (feature_edx & (1 << 9)) != 0;
+
+        let has_tsc =
+            (feature_edx & (1 << 4)) != 0;
+
+        let has_msr =
+            (feature_edx & (1 << 5)) != 0;
+
+        let has_sse =
+            (feature_edx & (1 << 25)) != 0;
+
+        let has_sse2 =
+            (feature_edx & (1 << 26)) != 0;
+
+        let has_xsave =
+            (feature_ecx & (1 << 26)) != 0;
+
+        let has_x2apic =
+            (feature_ecx & (1 << 21)) != 0;
+
+        Self {
+            vendor,
+            max_basic_leaf,
+
+            has_apic,
+            has_x2apic,
+            has_tsc,
+            has_msr,
+            has_sse,
+            has_sse2,
+            has_xsave,
+        }
+    }
+}
+
+#[inline]
+fn cpuid(leaf: u32) -> (u32, u32, u32, u32) {
+    let result = core::arch::x86_64::__cpuid(leaf);
+
+    (
+        result.eax,
+        result.ebx,
+        result.ecx,
+        result.edx,
+    )
 }
 
 #[repr(C, packed)]
@@ -311,6 +440,45 @@ unsafe fn load_tss() {
 }
 
 pub fn init() {
+
+    let cpu = CpuInfo::detect();
+
+    serial_write(b"CPU vendor: ");
+    serial_write(&cpu.vendor);
+    serial_write(b"\r\n");
+
+    serial_write(b"CPU max basic leaf: ");
+    serial_write_hex(cpu.max_basic_leaf as u64);
+    serial_write(b"\r\n");
+
+    serial_write(b"CPU APIC: ");
+    serial_write_bool(cpu.has_apic);
+    serial_write(b"\r\n");
+
+    serial_write(b"CPU x2APIC: ");
+    serial_write_bool(cpu.has_x2apic);
+    serial_write(b"\r\n");
+
+    serial_write(b"CPU TSC: ");
+    serial_write_bool(cpu.has_tsc);
+    serial_write(b"\r\n");
+
+    serial_write(b"CPU MSR: ");
+    serial_write_bool(cpu.has_msr);
+    serial_write(b"\r\n");
+
+    serial_write(b"CPU SSE: ");
+    serial_write_bool(cpu.has_sse);
+    serial_write(b"\r\n");
+
+    serial_write(b"CPU SSE2: ");
+    serial_write_bool(cpu.has_sse2);
+    serial_write(b"\r\n");
+
+    serial_write(b"CPU XSAVE: ");
+    serial_write_bool(cpu.has_xsave);
+    serial_write(b"\r\n");
+    
     unsafe {
         GDT.entries = [0; 5];
     }
