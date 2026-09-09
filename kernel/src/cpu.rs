@@ -506,6 +506,13 @@ unsafe fn load_tss() {
     }
 }
 
+#[inline]
+pub fn halt() {
+    unsafe {
+        core::arch::asm!("hlt", options(nomem, nostack, preserves_flags));
+    }
+}
+
 pub fn init() {
 
     let cpu = CpuInfo::detect();

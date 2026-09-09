@@ -1585,7 +1585,7 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     }
 
     loop {
-        core::hint::spin_loop();
+        cpu::halt();
     }
 }
 
