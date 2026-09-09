@@ -28,6 +28,9 @@ use memory::physical::PhysicalFrameAllocator;
 
 const COM1: u16 = 0x3F8;
 
+const LAPIC_VIRTUAL_BASE: u64 =
+    0xFFFF_A000_0000_0000;
+
 unsafe fn serial_write_byte(byte: u8) {
     unsafe {
         asm!(
@@ -1241,24 +1244,87 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"Initializing LAPIC...\r\n");
 
-    match hardware::lapic::Lapic::discover() {
-        Some(lapic) => {
-            serial_write(b"LAPIC MSR: ");
-            serial_write_hex(lapic.msr_value());
-            serial_write(b"\r\n");
+    let mut lapic =
+        match hardware::lapic::Lapic::discover() {
+            Some(lapic) => lapic,
 
-            serial_write(b"LAPIC base: ");
-            serial_write_hex(lapic.base());
-            serial_write(b"\r\n");
+            None => {
+                serial_write(
+                    b"LAPIC DISCOVERY FAILED\r\n"
+                );
 
-            serial_write(b"LAPIC enabled: YES\r\n");
-            serial_write(b"LAPIC DISCOVERY OK\r\n");
-        }
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        };
 
-        None => {
-            serial_write(b"LAPIC DISCOVERY FAILED\r\n");
+    serial_write(b"LAPIC MSR: ");
+    serial_write_hex(lapic.msr_value());
+    serial_write(b"\r\n");
+
+    serial_write(b"LAPIC physical base: ");
+    serial_write_hex(lapic.physical_base());
+    serial_write(b"\r\n");
+
+    serial_write(b"LAPIC enabled: YES\r\n");
+
+    serial_write(b"Mapping LAPIC MMIO...\r\n");
+
+    let pml4 =
+        unsafe {
+            memory::paging::current_pml4()
+        };
+
+    let mut lapic_mapper =
+        unsafe {
+            memory::paging::Mapper::new(pml4)
+        };
+
+    unsafe {
+        match lapic_mapper.map(
+            &mut allocator,
+            LAPIC_VIRTUAL_BASE,
+            lapic.physical_base(),
+            memory::paging::PageFlags {
+                writable: true,
+                cache_disable: true,
+            },
+        ) {
+            Ok(()) => {}
+
+            Err(()) => {
+                serial_write(
+                    b"ERROR: LAPIC MMIO mapping failed\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
         }
     }
+
+    lapic.set_virtual_base(LAPIC_VIRTUAL_BASE);
+
+    serial_write(b"LAPIC virtual base: ");
+    serial_write_hex(lapic.virtual_base());
+    serial_write(b"\r\n");
+
+    serial_write(b"LAPIC MMIO mapping OK\r\n");
+
+    let lapic_id =
+        unsafe {
+            lapic.read_u32(
+                hardware::lapic::LAPIC_ID_OFFSET
+            )
+        };
+
+    serial_write(b"LAPIC ID register: ");
+    serial_write_hex(lapic_id as u64);
+    serial_write(b"\r\n");
+
+    serial_write(b"LAPIC MMIO ACCESS OK\r\n");
 
     serial_write(
         b"Initializing interrupt system...\r\n"
