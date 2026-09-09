@@ -1357,12 +1357,25 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
         serial_write(b"\r\n");
     }
 
-    if (lapic_svr & hardware::lapic::LAPIC_SVR_ENABLE) != 0 {
-        serial_write(b"LAPIC SOFTWARE ENABLED\r\n");
-    } else {
-        serial_write(b"LAPIC SOFTWARE ENABLE FAILED\r\n");
-    }
+    let lapic_lvt_timer =
+        unsafe {
+            lapic.lvt_timer()
+        };
 
+    serial_write(b"LAPIC LVT TIMER register: ");
+    serial_write_hex(lapic_lvt_timer as u64);
+    serial_write(b"\r\n");
+
+    let lapic_lvt_error =
+        unsafe {
+            lapic.lvt_error()
+        };
+
+    serial_write(b"LAPIC LVT ERROR register: ");
+    serial_write_hex(lapic_lvt_error as u64);
+    serial_write(b"\r\n");
+
+    serial_write(b"LAPIC SOFTWARE ENABLED\r\n");
     serial_write(b"LAPIC REGISTER ACCESS OK\r\n");
 
     serial_write(

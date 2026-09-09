@@ -114,4 +114,12 @@ impl Lapic {
             );
         }
     }
+
+    pub unsafe fn lvt_timer(&self) -> u32 {
+        unsafe { self.read_u32(LAPIC_LVT_TIMER_OFFSET) }
+    }
+
+    pub unsafe fn lvt_error(&self) -> u32 {
+        unsafe { self.read_u32(LAPIC_LVT_ERROR_OFFSET) }
+    }
 }
