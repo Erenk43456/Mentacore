@@ -1378,6 +1378,48 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     serial_write(b"LAPIC SOFTWARE ENABLED\r\n");
     serial_write(b"LAPIC REGISTER ACCESS OK\r\n");
 
+    let lapic_timer_divide =
+        unsafe {
+            lapic.timer_divide()
+        };
+
+    serial_write(b"LAPIC TIMER DIVIDE register: ");
+    serial_write_hex(lapic_timer_divide as u64);
+    serial_write(b"\r\n");
+
+    let lapic_timer_initial =
+        unsafe {
+            lapic.timer_initial_count()
+        };
+
+    serial_write(b"LAPIC TIMER INITIAL COUNT register: ");
+    serial_write_hex(lapic_timer_initial as u64);
+    serial_write(b"\r\n");
+
+    let lapic_timer_current =
+        unsafe {
+            lapic.timer_current_count()
+        };
+
+    serial_write(b"LAPIC TIMER CURRENT COUNT register: ");
+    serial_write_hex(lapic_timer_current as u64);
+    serial_write(b"\r\n");
+
+    let lapic_timer_lvt =
+        unsafe {
+            lapic.lvt_timer()
+        };
+
+    serial_write(b"LAPIC TIMER LVT verification: ");
+    serial_write_hex(lapic_timer_lvt as u64);
+    serial_write(b"\r\n");
+
+    if (lapic_timer_lvt & hardware::lapic::LAPIC_LVT_MASKED) != 0 {
+        serial_write(b"LAPIC TIMER MASKED OK\r\n");
+    } else {
+        serial_write(b"LAPIC TIMER MASKED UNEXPECTED\r\n");
+    }
+
     serial_write(
         b"Initializing interrupt system...\r\n"
     );

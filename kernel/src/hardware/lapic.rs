@@ -9,10 +9,19 @@ const APIC_GLOBAL_ENABLE: u64 = 1 << 11;
 pub const LAPIC_ID_OFFSET: u64 = 0x020;
 pub const LAPIC_VERSION_OFFSET: u64 = 0x030;
 pub const LAPIC_EOI_OFFSET: u64 = 0x0B0;
+
 pub const LAPIC_SVR_OFFSET: u64 = 0x0F0;
 pub const LAPIC_SVR_ENABLE: u32 = 1 << 8;
+
 pub const LAPIC_LVT_TIMER_OFFSET: u64 = 0x320;
 pub const LAPIC_LVT_ERROR_OFFSET: u64 = 0x370;
+
+pub const LAPIC_TIMER_INITIAL_COUNT_OFFSET: u64 = 0x380;
+pub const LAPIC_TIMER_CURRENT_COUNT_OFFSET: u64 = 0x390;
+pub const LAPIC_TIMER_DIVIDE_OFFSET: u64 = 0x3E0;
+
+pub const LAPIC_LVT_TIMER_PERIODIC: u32 = 1 << 17;
+pub const LAPIC_LVT_MASKED: u32 = 1 << 16;
 
 pub struct Lapic {
     physical_base: u64,
@@ -116,10 +125,50 @@ impl Lapic {
     }
 
     pub unsafe fn lvt_timer(&self) -> u32 {
-        unsafe { self.read_u32(LAPIC_LVT_TIMER_OFFSET) }
+        unsafe {
+            self.read_u32(LAPIC_LVT_TIMER_OFFSET)
+        }
     }
 
     pub unsafe fn lvt_error(&self) -> u32 {
-        unsafe { self.read_u32(LAPIC_LVT_ERROR_OFFSET) }
+        unsafe {
+            self.read_u32(LAPIC_LVT_ERROR_OFFSET)
+        }
+    }
+
+    pub unsafe fn timer_initial_count(&self) -> u32 {
+        unsafe {
+            self.read_u32(LAPIC_TIMER_INITIAL_COUNT_OFFSET)
+        }
+    }
+
+    pub unsafe fn set_timer_initial_count(&self, value: u32) {
+        unsafe {
+            self.write_u32(
+                LAPIC_TIMER_INITIAL_COUNT_OFFSET,
+                value,
+            );
+        }
+    }
+
+    pub unsafe fn timer_current_count(&self) -> u32 {
+        unsafe {
+            self.read_u32(LAPIC_TIMER_CURRENT_COUNT_OFFSET)
+        }
+    }
+
+    pub unsafe fn timer_divide(&self) -> u32 {
+        unsafe {
+            self.read_u32(LAPIC_TIMER_DIVIDE_OFFSET)
+        }
+    }
+
+    pub unsafe fn set_timer_divide(&self, value: u32) {
+        unsafe {
+            self.write_u32(
+                LAPIC_TIMER_DIVIDE_OFFSET,
+                value,
+            );
+        }
     }
 }
