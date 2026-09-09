@@ -15,6 +15,7 @@ mod display;
 mod interrupts;
 mod memory;
 mod hardware;
+mod sync;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -1425,11 +1426,11 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     );
 
     unsafe {
-        interrupts::init(&mut allocator);
+        interrupts::init(allocator);
     }
 
     serial_write(b"Interrupt system initialized.\r\n");
-
+    
     serial_write(b"Initializing PIC...\r\n");
 
     unsafe {
@@ -1570,6 +1571,11 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial_write(b"Hardware interrupts enabled.\r\n");
 
+    cpu::test_interrupt_state();
+
+    test_spinlock();
+    test_spinlock_irqsave();
+
     serial_write(b"Calibrating TSC...\r\n");
 
     let tsc_frequency = cpu::calibrate_tsc();
@@ -1587,6 +1593,229 @@ pub extern "C" fn _start(boot_info: *const BootInfo) -> ! {
     loop {
         cpu::halt();
     }
+}
+
+fn test_spinlock() {
+    serial_write(b"Testing spinlock...\r\n");
+
+    let lock = sync::Spinlock::new(0u64);
+
+    if lock.is_locked() {
+        serial_write(
+            b"SPINLOCK TEST FAILED: lock initially locked\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Spinlock initially unlocked.\r\n"
+    );
+
+    {
+        let mut guard = lock.lock();
+
+        if !lock.is_locked() {
+            serial_write(
+                b"SPINLOCK TEST FAILED: lock was not acquired\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+
+        *guard = 0x1234_5678;
+
+        serial_write(
+            b"  Spinlock acquired successfully.\r\n"
+        );
+    }
+
+    if lock.is_locked() {
+        serial_write(
+            b"SPINLOCK TEST FAILED: lock was not released\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Spinlock released successfully.\r\n"
+    );
+
+    {
+        let guard = lock.lock();
+
+        if *guard != 0x1234_5678 {
+            serial_write(
+                b"SPINLOCK TEST FAILED: protected data corrupted\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Protected data preserved successfully.\r\n"
+    );
+
+    serial_write(
+        b"SPINLOCK TEST OK\r\n"
+    );
+}
+
+fn test_spinlock_irqsave() {
+    serial_write(
+        b"Testing interrupt-safe spinlock...\r\n"
+    );
+
+    let lock = sync::Spinlock::new(0u64);
+
+    // ---------------------------------------------------------
+    // 1. Lock acquired with interrupts initially enabled.
+    // ---------------------------------------------------------
+
+    if !cpu::interrupts_enabled() {
+        serial_write(
+            b"SPINLOCK IRQ TEST FAILED: interrupts not enabled initially\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    {
+        let mut guard = lock.lock_irqsave();
+
+        if cpu::interrupts_enabled() {
+            serial_write(
+                b"SPINLOCK IRQ TEST FAILED: interrupts remained enabled\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+
+        *guard = 0xDEAD_BEEF;
+
+        serial_write(
+            b"  Interrupts disabled while lock held.\r\n"
+        );
+    }
+
+    // The original enabled state must be restored.
+    if !cpu::interrupts_enabled() {
+        serial_write(
+            b"SPINLOCK IRQ TEST FAILED: interrupt state not restored\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Interrupt state restored after unlock.\r\n"
+    );
+
+    // ---------------------------------------------------------
+    // 2. Verify protected data survived the unlock.
+    // ---------------------------------------------------------
+
+    {
+        let guard = lock.lock_irqsave();
+
+        if *guard != 0xDEAD_BEEF {
+            serial_write(
+                b"SPINLOCK IRQ TEST FAILED: protected data corrupted\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
+
+    serial_write(
+        b"  Protected data preserved successfully.\r\n"
+    );
+
+    // ---------------------------------------------------------
+    // 3. Lock acquired while interrupts are already disabled.
+    // ---------------------------------------------------------
+
+    let disabled_state =
+        cpu::InterruptState::save_and_disable();
+
+    if cpu::interrupts_enabled() {
+        serial_write(
+            b"SPINLOCK IRQ TEST FAILED: unable to enter disabled state\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    {
+        let mut guard = lock.lock_irqsave();
+
+        if cpu::interrupts_enabled() {
+            serial_write(
+                b"SPINLOCK IRQ TEST FAILED: interrupts unexpectedly enabled while locked\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+
+        *guard = 0xCAFE_BABE;
+
+        serial_write(
+            b"  Lock acquired with interrupts already disabled.\r\n"
+        );
+    }
+
+    // lock_irqsave() must preserve the already-disabled state.
+    if cpu::interrupts_enabled() {
+        serial_write(
+            b"SPINLOCK IRQ TEST FAILED: disabled state was not preserved\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    disabled_state.restore();
+
+    if !cpu::interrupts_enabled() {
+        serial_write(
+            b"SPINLOCK IRQ TEST FAILED: final interrupt restore failed\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Previously disabled state preserved successfully.\r\n"
+    );
+
+    serial_write(
+        b"SPINLOCK INTERRUPT-SAFE TEST OK\r\n"
+    );
 }
 
 #[panic_handler]

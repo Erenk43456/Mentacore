@@ -214,18 +214,24 @@ pub fn read_tsc() -> u64 {
 pub fn calibrate_tsc() -> u64 {
     const CALIBRATION_TICKS: u64 = 100;
 
-    let start_ticks = crate::interrupts::timer_ticks();
-    let target_ticks = start_ticks + CALIBRATION_TICKS;
+    let start_ticks =
+        crate::interrupts::timer_ticks();
+
+    let target_ticks =
+        start_ticks + CALIBRATION_TICKS;
 
     let start_tsc = read_tsc();
 
-    while crate::interrupts::timer_ticks() < target_ticks {
+    while crate::interrupts::timer_ticks()
+        < target_ticks
+    {
         core::hint::spin_loop();
     }
 
     let end_tsc = read_tsc();
 
-    let elapsed_tsc = end_tsc - start_tsc;
+    let elapsed_tsc =
+        end_tsc - start_tsc;
 
     let pit_frequency =
         crate::hardware::pit::actual_frequency(100);
@@ -237,7 +243,8 @@ pub fn calibrate_tsc() -> u64 {
     let frequency =
         ((elapsed_tsc as u128)
             * (pit_frequency as u128)
-            / (CALIBRATION_TICKS as u128)) as u64;
+            / (CALIBRATION_TICKS as u128))
+            as u64;
 
     frequency
 }
@@ -325,7 +332,8 @@ impl Tss {
             reserved_2: 0,
             reserved_3: 0,
 
-            iomap_base: core::mem::size_of::<Self>() as u16,
+            iomap_base:
+                core::mem::size_of::<Self>() as u16,
         }
     }
 }
@@ -346,6 +354,7 @@ struct TssDescriptor {
 impl TssDescriptor {
     fn new(tss: *const Tss) -> Self {
         let base = tss as u64;
+
         let limit =
             (core::mem::size_of::<Tss>() - 1) as u32;
 
@@ -354,7 +363,8 @@ impl TssDescriptor {
             base_low: base as u16,
             base_middle: (base >> 16) as u8,
             access: 0x89,
-            granularity: ((limit >> 16) & 0x0F) as u8,
+            granularity:
+                ((limit >> 16) & 0x0F) as u8,
             base_high: (base >> 24) as u8,
             base_upper: (base >> 32) as u32,
             reserved: 0,
@@ -383,16 +393,23 @@ struct Stack<const SIZE: usize> {
     data: [u8; SIZE],
 }
 
-const KERNEL_STACK_SIZE: usize = 16 * 1024;
-const IST1_STACK_SIZE: usize = 16 * 1024;
+const KERNEL_STACK_SIZE: usize =
+    16 * 1024;
 
-static mut KERNEL_STACK: Stack<KERNEL_STACK_SIZE> = Stack {
-    data: [0; KERNEL_STACK_SIZE],
-};
+const IST1_STACK_SIZE: usize =
+    16 * 1024;
 
-static mut IST1_STACK: Stack<IST1_STACK_SIZE> = Stack {
-    data: [0; IST1_STACK_SIZE],
-};
+static mut KERNEL_STACK:
+    Stack<KERNEL_STACK_SIZE> =
+    Stack {
+        data: [0; KERNEL_STACK_SIZE],
+    };
+
+static mut IST1_STACK:
+    Stack<IST1_STACK_SIZE> =
+    Stack {
+        data: [0; IST1_STACK_SIZE],
+    };
 
 static mut TSS: Tss = Tss::new();
 
@@ -400,7 +417,10 @@ static mut GDT: Gdt = Gdt {
     entries: [0; 5],
 };
 
-fn write_gdt_entry(index: usize, entry: GdtEntry) {
+fn write_gdt_entry(
+    index: usize,
+    entry: GdtEntry,
+) {
     let value =
         (entry.limit_low as u64)
         | ((entry.base_low as u64) << 16)
@@ -414,7 +434,10 @@ fn write_gdt_entry(index: usize, entry: GdtEntry) {
     }
 }
 
-fn write_tss_descriptor(index: usize, descriptor: TssDescriptor) {
+fn write_tss_descriptor(
+    index: usize,
+    descriptor: TssDescriptor,
+) {
     let low =
         (descriptor.limit_low as u64)
         | ((descriptor.base_low as u64) << 16)
@@ -425,6 +448,7 @@ fn write_tss_descriptor(index: usize, descriptor: TssDescriptor) {
 
     unsafe {
         GDT.entries[index] = low;
+
         GDT.entries[index + 1] =
             (descriptor.base_upper as u64)
             | ((descriptor.reserved as u64) << 32);
@@ -442,7 +466,8 @@ fn initialize_tss_stacks() {
 
     unsafe {
         let tss_ptr =
-            core::ptr::addr_of_mut!(TSS) as *mut u8;
+            core::ptr::addr_of_mut!(TSS)
+                as *mut u8;
 
         core::ptr::write_unaligned(
             tss_ptr.add(4) as *mut u64,
@@ -464,7 +489,9 @@ pub fn ist1_stack_top() -> u64 {
 pub fn tss_ist1() -> u64 {
     unsafe {
         core::ptr::read_unaligned(
-            (core::ptr::addr_of!(TSS) as *const u8).add(36)
+            (core::ptr::addr_of!(TSS)
+                as *const u8)
+                .add(36)
                 as *const u64,
         )
     }
@@ -506,15 +533,226 @@ unsafe fn load_tss() {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct InterruptState {
+    rflags: u64,
+}
+
+impl InterruptState {
+    #[inline]
+    pub fn save_and_disable() -> Self {
+        let rflags: u64;
+
+        unsafe {
+            core::arch::asm!(
+                "pushfq",
+                "pop {}",
+                out(reg) rflags,
+                options(nomem, preserves_flags)
+            );
+
+            core::arch::asm!(
+                "cli",
+                options(nostack)
+            );
+        }
+
+        Self { rflags }
+    }
+
+    #[inline]
+    pub fn restore(self) {
+        if self.rflags & (1 << 9) != 0 {
+            unsafe {
+                core::arch::asm!(
+                    "sti",
+                    options(nostack)
+                );
+            }
+        }
+    }
+
+    #[inline]
+    pub fn were_enabled(self) -> bool {
+        self.rflags & (1 << 9) != 0
+    }
+}
+
+#[inline]
+pub fn interrupts_enabled() -> bool {
+    let rflags: u64;
+
+    unsafe {
+        core::arch::asm!(
+            "pushfq",
+            "pop {}",
+            out(reg) rflags,
+            options(nomem, preserves_flags)
+        );
+    }
+
+    rflags & (1 << 9) != 0
+}
+
+pub fn test_interrupt_state() {
+    serial_write(
+        b"Testing interrupt state primitives...\r\n"
+    );
+
+    // At this point the interrupt system
+    // must already be active.
+    if !interrupts_enabled() {
+        serial_write(
+            b"  Interrupts initially disabled.\r\n"
+        );
+
+        unsafe {
+            core::arch::asm!(
+                "sti",
+                options(nostack)
+            );
+        }
+    }
+
+    if !interrupts_enabled() {
+        serial_write(
+            b"INTERRUPT STATE TEST FAILED: could not enable interrupts\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Interrupts initially enabled.\r\n"
+    );
+
+    // Verify save_and_disable() records
+    // the enabled state and actually disables
+    // interrupts.
+    let enabled_state =
+        InterruptState::save_and_disable();
+
+    if !enabled_state.were_enabled() {
+        serial_write(
+            b"INTERRUPT STATE TEST FAILED: enabled state not captured\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    if interrupts_enabled() {
+        serial_write(
+            b"INTERRUPT STATE TEST FAILED: CLI did not disable interrupts\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Interrupts disabled successfully.\r\n"
+    );
+
+    // Restore the state that existed before
+    // save_and_disable().
+    enabled_state.restore();
+
+    if !interrupts_enabled() {
+        serial_write(
+            b"INTERRUPT STATE TEST FAILED: STI did not restore interrupts\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Interrupt state restored successfully.\r\n"
+    );
+
+    // Now verify that an already-disabled
+    // state stays disabled.
+    unsafe {
+        core::arch::asm!(
+            "cli",
+            options(nostack)
+        );
+    }
+
+    if interrupts_enabled() {
+        serial_write(
+            b"INTERRUPT STATE TEST FAILED: could not enter disabled state\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    let disabled_state =
+        InterruptState::save_and_disable();
+
+    if disabled_state.were_enabled() {
+        serial_write(
+            b"INTERRUPT STATE TEST FAILED: disabled state not captured\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    disabled_state.restore();
+
+    if interrupts_enabled() {
+        serial_write(
+            b"INTERRUPT STATE TEST FAILED: disabled state was incorrectly restored as enabled\r\n"
+        );
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    serial_write(
+        b"  Disabled state preserved successfully.\r\n"
+    );
+
+    // Leave the system in the normal
+    // interrupt-enabled state.
+    unsafe {
+        core::arch::asm!(
+            "sti",
+            options(nostack)
+        );
+    }
+
+    serial_write(
+        b"INTERRUPT STATE TEST OK\r\n"
+    );
+}
+
 #[inline]
 pub fn halt() {
     unsafe {
-        core::arch::asm!("hlt", options(nomem, nostack, preserves_flags));
+        core::arch::asm!(
+            "hlt",
+            options(
+                nomem,
+                nostack,
+                preserves_flags
+            )
+        );
     }
 }
 
 pub fn init() {
-
     let cpu = CpuInfo::detect();
 
     serial_write(b"CPU vendor: ");
@@ -522,7 +760,9 @@ pub fn init() {
     serial_write(b"\r\n");
 
     serial_write(b"CPU max basic leaf: ");
-    serial_write_hex(cpu.max_basic_leaf as u64);
+    serial_write_hex(
+        cpu.max_basic_leaf as u64
+    );
     serial_write(b"\r\n");
 
     serial_write(b"CPU APIC: ");
@@ -555,9 +795,13 @@ pub fn init() {
         serial_write(b"\r\n");
 
         if tsc_end > tsc_start {
-            serial_write(b"TSC READ TEST OK\r\n");
+            serial_write(
+                b"TSC READ TEST OK\r\n"
+            );
         } else {
-            serial_write(b"TSC READ TEST FAILED\r\n");
+            serial_write(
+                b"TSC READ TEST FAILED\r\n"
+            );
         }
     }
 
@@ -576,7 +820,7 @@ pub fn init() {
     serial_write(b"CPU XSAVE: ");
     serial_write_bool(cpu.has_xsave);
     serial_write(b"\r\n");
-    
+
     unsafe {
         GDT.entries = [0; 5];
     }

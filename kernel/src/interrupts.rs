@@ -1,6 +1,7 @@
 use core::arch::asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use crate::sync::Spinlock;
 use crate::memory::physical::PhysicalFrameAllocator;
 
 const COM1: u16 = 0x3F8;
@@ -141,8 +142,8 @@ struct IdtPointer {
 static mut IDT: [IdtEntry; 256] =
     [const { IdtEntry::missing() }; 256];
 
-static mut FRAME_ALLOCATOR: *mut () =
-    core::ptr::null_mut();
+static FRAME_ALLOCATOR: Spinlock<Option<PhysicalFrameAllocator>> =
+    Spinlock::new(None);
 
 static TIMER_TICKS: AtomicU64 =
     AtomicU64::new(0);
@@ -625,9 +626,23 @@ extern "C" fn page_fault_dispatch(
         }
     }
 
-    let allocator = unsafe {
-        &mut *(FRAME_ALLOCATOR as *mut PhysicalFrameAllocator)
-    };
+    let mut allocator_guard =
+        FRAME_ALLOCATOR.lock_irqsave();
+
+    let allocator =
+        match allocator_guard.as_mut() {
+            Some(allocator) => allocator,
+
+            None => {
+                serial_write(
+                    b"Physical frame allocator unavailable.\r\n"
+                );
+
+                loop {
+                    core::hint::spin_loop();
+                }
+            }
+        };
 
     let frame = match allocator.allocate_frame() {
         Some(frame) => frame,
@@ -686,12 +701,16 @@ extern "C" fn page_fault_dispatch(
 }
 
 pub unsafe fn init(
-    allocator: &mut PhysicalFrameAllocator,
+    allocator: PhysicalFrameAllocator,
 ) {
-    unsafe {
-        FRAME_ALLOCATOR =
-            allocator as *mut PhysicalFrameAllocator as *mut ();
+    {
+        let mut guard =
+            FRAME_ALLOCATOR.lock_irqsave();
 
+        *guard = Some(allocator);
+    }
+
+    unsafe {
         let code_segment: u16;
 
         asm!(

@@ -20,7 +20,7 @@ Mentacore aims to build the software stack from the lowest level upward:
 ├─────────────────────────────────────┤
 │          Python Runtime             │
 ├─────────────────────────────────────┤
-│         Mentacore Kernel            │
+│         Mentacore Kernel             │
 │              Rust                   │
 ├─────────────────────────────────────┤
 │       Custom Rust Bootloader        │
@@ -59,9 +59,13 @@ The architecture is intentionally developed from the lowest layer upward. The go
 
 ## Current Status
 
-**Pre-alpha — Kernel infrastructure / Phase 2 development**
+**Pre-alpha — Kernel infrastructure / Phase 3 development**
 
-The basic boot and kernel infrastructure is now operational.
+The boot process and core kernel infrastructure are operational.
+
+Phase 1 established the boot, memory-management, virtual-memory, heap, and framebuffer foundations.
+
+Phase 2 added CPU state management, interrupt and exception infrastructure, hardware timer support, and interrupt-safe kernel synchronization.
 
 ### Bootloader
 
@@ -71,9 +75,12 @@ The custom Rust UEFI bootloader currently provides:
 * Kernel loading
 * UEFI memory map acquisition
 * Framebuffer discovery
+* Preferred GOP mode selection
 * Boot information construction
+* Kernel stack allocation
 * Kernel handoff
 * Serial debugging support
+* Exit from UEFI boot services
 
 ### Kernel
 
@@ -99,9 +106,26 @@ The kernel currently provides:
 * Demand-paged kernel heap
 * Global kernel allocator
 * Multi-page heap allocation
-* Initial IDT infrastructure
+* GDT and CPU state initialization
+* Task State Segment (TSS)
+* Kernel stack configuration
+* IST1 stack configuration
+* 256-entry IDT
+* Interrupt handler registration
 * Page fault handling
-* Page fault diagnostics
+* Double fault IST configuration
+* LAPIC initialization
+* LAPIC MMIO mapping
+* PIT initialization
+* Hardware interrupt support
+* Timer interrupt handling
+* TSC calibration
+* Interrupt state save/restore
+* Kernel spinlock
+* Interrupt-safe spinlock locking
+* Synchronized physical frame allocator access from exception context
+
+### Memory Management Validation
 
 The implemented memory-management stack has been validated with kernel-side tests covering physical allocation, paging, mapping/unmapping, and heap allocation.
 
@@ -125,6 +149,28 @@ HEAP MULTI-PAGE TEST OK
 DISPLAY OK
 ```
 
+### CPU and Interrupt Validation
+
+CPU state, interrupt infrastructure, and synchronization primitives have also been validated in QEMU:
+
+```text
+TSC READ TEST OK
+
+LAPIC REGISTER ACCESS OK
+
+IST1 TSS CONFIG OK
+IDT DOUBLE FAULT IST CONFIG OK
+
+INTERRUPT STATE TEST OK
+SPINLOCK TEST OK
+SPINLOCK INTERRUPT-SAFE TEST OK
+
+LAPIC TIMER INTERRUPT
+TSC CALIBRATION OK
+```
+
+The kernel has successfully handled demand-paged heap page faults after the physical frame allocator was moved behind an interrupt-safe synchronization primitive, removing the previous global raw allocator pointer.
+
 ## Development Roadmap
 
 ```text
@@ -137,37 +183,51 @@ Phase 1 — Kernel Basic Infrastructure
     ✓ Basic framebuffer output
 
 Phase 2 — Kernel Services
-    ├── Interrupts
-    ├── Exceptions
-    ├── Timer
-    ├── CPU management
-    └── Basic device layer
+    ✓ Interrupt and exception foundation
+    ✓ GDT and CPU state
+    ✓ Timer infrastructure
+    ✓ Kernel synchronization
+    ✓ Interrupt-safe locking
+    ✓ Global kernel state audit
 
-Phase 3 — Process and Userspace
-    ├── Processes
+Phase 3 — Processes and Userspace
+    ├── Process abstraction
+    ├── Thread abstraction
     ├── Address spaces
     ├── Scheduler
     ├── System calls
-    └── Filesystem
+    └── Userspace runtime
 
-Phase 4 — Python Runtime
+Phase 4 — Filesystem and OS Services
+    ├── VFS architecture
+    ├── Filesystem abstraction
+    ├── Initial filesystem
+    ├── File handles
+    ├── Directories
+    ├── Storage layer
+    └── Basic OS services
+
+Phase 5 — Python Runtime
     ├── Python runtime integration
     ├── Python execution
     ├── Import system
-    ├── Required OS interfaces
+    ├── Required kernel interfaces
     └── Runtime services
 
-Phase 5 — AI Kernel
-    ├── Python API
+Phase 6 — AI Kernel
+    ├── AI kernel architecture
+    ├── Python-based AI kernel
     ├── AI runtime layer
     ├── Memory and context
     ├── Tools
     └── AI services
 
-Phase 6 — Flust
-    ├── Flust runtime integration
-    ├── Native UI APIs
+Phase 7 — Flust
+    ├── Flust/Mentacore integration
+    ├── Python runtime interface
+    ├── Native UI services
     ├── Required runtime support
+    ├── AI kernel integration
     └── Run Flust directly on Mentacore
 ```
 
@@ -195,6 +255,9 @@ The goal is not simply to produce a bootable kernel, but to build a complete ope
 * **Boot:** UEFI
 * **Kernel:** Custom `no_std` Rust kernel
 * **Virtualization / Testing:** QEMU
+* **Memory Management:** Physical frame allocator, page tables, demand-paged kernel heap
+* **Interrupts:** x86_64 IDT, LAPIC, PIT
+* **Synchronization:** Kernel spinlock with interrupt-safe locking
 * **Runtime:** Planned native Python runtime
 * **AI Layer:** Planned Python-based AI kernel
 * **Development Environment:** Flust

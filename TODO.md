@@ -160,11 +160,11 @@
 
 ## 2.4 Kernel Synchronization
 
-* [ ] Define interrupt-safe synchronization primitives
-* [ ] Implement spinlock
-* [ ] Implement interrupt-safe locking
-* [ ] Audit global mutable kernel state
-* [ ] Remove unnecessary raw global pointers where possible
+* [x] Define interrupt-safe synchronization primitives
+* [x] Implement spinlock
+* [x] Implement interrupt-safe locking
+* [x] Audit global mutable kernel state
+* [x] Remove unnecessary raw global pointers where possible
 
 ---
 
