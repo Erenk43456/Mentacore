@@ -3,15 +3,14 @@ use core::ptr::{read_volatile, write_volatile};
 use crate::cpu;
 
 const IA32_APIC_BASE_MSR: u32 = 0x1B;
-
 const APIC_BASE_MASK: u64 = 0xFFFF_FFFF_FFFF_F000;
 const APIC_GLOBAL_ENABLE: u64 = 1 << 11;
 
 pub const LAPIC_ID_OFFSET: u64 = 0x020;
 pub const LAPIC_VERSION_OFFSET: u64 = 0x030;
 pub const LAPIC_EOI_OFFSET: u64 = 0x0B0;
-
 pub const LAPIC_SVR_OFFSET: u64 = 0x0F0;
+pub const LAPIC_SVR_ENABLE: u32 = 1 << 8;
 pub const LAPIC_LVT_TIMER_OFFSET: u64 = 0x320;
 pub const LAPIC_LVT_ERROR_OFFSET: u64 = 0x370;
 
