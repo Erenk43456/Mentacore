@@ -269,7 +269,6 @@
 
 # Long-Term Architecture
 
-```text
 Hardware
    ↓
 UEFI
@@ -287,7 +286,6 @@ Python Runtime
 AI Kernel
    ↓
 Flust
-```
 
 # Development Principles
 
@@ -298,5 +296,5 @@ Flust
 * [x] Keep low-level code understandable and debuggable.
 * [x] Use serial diagnostics during kernel development.
 * [ ] Document important architectural decisions as the project evolves.
-* [ ] Maintain regression tests for every completed subsystem.
-* [ ] Avoid introducing higher-level dependencies before the required kernel infrastructure exists.
+* [x] Maintain regression tests for every completed subsystem.
+* [x] Avoid introducing higher-level dependencies before the required kernel infrastructure exists.

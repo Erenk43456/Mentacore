@@ -1,0 +1,67 @@
+mod framework;
+mod physical;
+mod paging;
+mod heap;
+mod sync;
+mod tsc;
+mod interrupts;
+
+use crate::debug;
+use crate::memory::physical::PhysicalFrameAllocator;
+
+pub struct KernelTestRunner {
+    runner: framework::TestRunner,
+}
+
+impl KernelTestRunner {
+    pub const fn new() -> Self {
+        Self {
+            runner: framework::TestRunner::new(),
+        }
+    }
+
+    pub fn run_physical(
+        &mut self,
+        allocator: &mut PhysicalFrameAllocator,
+    ) {
+        physical::run(
+            &mut self.runner,
+            allocator,
+        );
+    }
+
+    pub fn run_paging(
+        &mut self,
+        allocator: &mut PhysicalFrameAllocator,
+    ) {
+        paging::run(
+            &mut self.runner,
+            allocator,
+        );
+    }
+
+    pub fn run_heap(&mut self) {
+        heap::run(&mut self.runner);
+    }
+
+    pub fn run_sync(&mut self) {
+        sync::run(&mut self.runner);
+    }
+
+    pub fn run_tsc(&mut self) {
+        tsc::run(&mut self.runner);
+    }
+
+    pub fn run_interrupts(&mut self) {
+        interrupts::run(&mut self.runner);
+    }
+
+    pub fn finish(&self) {
+        self.runner.finish();
+        debug::write(b"\r\n");
+    }
+}
+
+pub fn write_header() {
+    framework::write_header();
+}

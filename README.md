@@ -10,7 +10,6 @@ The long-term goal is to build an operating system designed around artificial in
 
 Mentacore aims to build the software stack from the lowest level upward:
 
-```text
 ┌─────────────────────────────────────┐
 │               Flust                 │
 │       AI Development System         │
@@ -29,7 +28,6 @@ Mentacore aims to build the software stack from the lowest level upward:
 ├─────────────────────────────────────┤
 │             x86_64                  │
 └─────────────────────────────────────┘
-```
 
 Each layer is developed and validated before higher-level functionality is introduced.
 
@@ -37,7 +35,6 @@ Each layer is developed and validated before higher-level functionality is intro
 
 The intended long-term architecture is:
 
-```text
 Flust
   ↓
 AI Kernel
@@ -53,7 +50,6 @@ Rust Bootloader
 UEFI
   ↓
 x86_64 Hardware
-```
 
 The architecture is intentionally developed from the lowest layer upward. The goal is to avoid depending on a conventional operating system for the core execution environment.
 
@@ -131,49 +127,105 @@ The implemented memory-management stack has been validated with kernel-side test
 
 Current validated milestones include:
 
-```text
 PHYSICAL FRAME FREE TEST OK
+
 PHYSICAL FRAME REUSE TEST OK
+
 PHYSICAL FRAME COUNTER TEST OK
+
 PHYSICAL FRAME DOUBLE-FREE TEST OK
+
 PHYSICAL FRAME INVALID TEST OK
 
 PAGING DUPLICATE MAP TEST OK
+
 PAGING MAPPING TEST OK
+
 PAGING UNMAP TEST OK
+
 PAGING UNMAP REJECTION TEST OK
 
 HEAP TEST OK
+
 HEAP MULTI-PAGE TEST OK
 
 DISPLAY OK
-```
+
+### Kernel Test Infrastructure
+
+Mentacore now includes a custom kernel-side test infrastructure designed for `no_std` execution.
+
+The test system provides:
+
+* Custom `TestRunner` abstraction
+* Modular kernel test suites
+* Serial-based test result reporting
+* Test pass/fail tracking
+* Aggregate test results
+* QEMU-based automated test execution
+* Automated test timeout handling
+* Automated `ALL TESTS PASSED` detection
+
+The current test suites cover:
+
+physical
+paging
+heap
+interrupts
+sync
+cpu / TSC
+
+The complete kernel test suite currently validates:
+
+15/15 TESTS PASSED
+ALL TESTS PASSED
+
+The test infrastructure is intentionally implemented inside the kernel rather than relying on the standard Rust test harness, allowing kernel subsystems to be validated in the actual `no_std` execution environment.
+
+### QEMU Test Runner
+
+A dedicated QEMU test runner is provided separately from the normal development runner.
+
+The test runner:
+
+* Builds the kernel
+* Builds the bootloader
+* Prepares the EFI boot environment
+* Copies the kernel into the test ESP
+* Starts QEMU independently
+* Captures kernel serial output
+* Detects test completion
+* Reports the final test result
+* Fails on timeout or kernel-reported test failure
+
+This provides a repeatable regression-testing workflow for kernel development without depending on the interactive development runner.
 
 ### CPU and Interrupt Validation
 
 CPU state, interrupt infrastructure, and synchronization primitives have also been validated in QEMU:
 
-```text
 TSC READ TEST OK
 
 LAPIC REGISTER ACCESS OK
 
 IST1 TSS CONFIG OK
+
 IDT DOUBLE FAULT IST CONFIG OK
 
 INTERRUPT STATE TEST OK
+
 SPINLOCK TEST OK
+
 SPINLOCK INTERRUPT-SAFE TEST OK
 
 LAPIC TIMER INTERRUPT
+
 TSC CALIBRATION OK
-```
 
 The kernel has successfully handled demand-paged heap page faults after the physical frame allocator was moved behind an interrupt-safe synchronization primitive, removing the previous global raw allocator pointer.
 
 ## Development Roadmap
 
-```text
 Phase 1 — Kernel Basic Infrastructure
     ✓ UEFI memory map
     ✓ Physical frame allocator
@@ -229,7 +281,6 @@ Phase 7 — Flust
     ├── Required runtime support
     ├── AI kernel integration
     └── Run Flust directly on Mentacore
-```
 
 ## Development Philosophy
 
@@ -264,13 +315,11 @@ The goal is not simply to produce a bootable kernel, but to build a complete ope
 
 ## Repository Structure
 
-```text
 Mentacore/
 ├── boot_protocol/
 ├── bootloader/
 ├── kernel/
 └── scripts/
-```
 
 The `boot_protocol` crate defines the interface between the bootloader and kernel.
 
@@ -284,7 +333,6 @@ The `scripts` directory contains development and QEMU execution tooling.
 
 The final system is intended to look conceptually like:
 
-```text
 ┌──────────────────────────────┐
 │            Flust             │
 ├──────────────────────────────┤
@@ -302,7 +350,6 @@ The final system is intended to look conceptually like:
 ├──────────────────────────────┤
 │         x86_64 CPU           │
 └──────────────────────────────┘
-```
 
 Mentacore is currently far from this final architecture, but development is proceeding toward it layer by layer.
 
