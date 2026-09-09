@@ -10,6 +10,7 @@ The long-term goal is to build an operating system designed around artificial in
 
 Mentacore aims to build the software stack from the lowest level upward:
 
+```text
 ┌─────────────────────────────────────┐
 │               Flust                 │
 │       AI Development System         │
@@ -19,15 +20,16 @@ Mentacore aims to build the software stack from the lowest level upward:
 ├─────────────────────────────────────┤
 │          Python Runtime             │
 ├─────────────────────────────────────┤
-│         Mentacore Kernel             │
-│              Rust                   │
+│         Mentacore Kernel            │
+│               Rust                  │
 ├─────────────────────────────────────┤
-│       Custom Rust Bootloader        │
+│        Custom UEFI Bootloader       │
 ├─────────────────────────────────────┤
 │               UEFI                  │
 ├─────────────────────────────────────┤
 │             x86_64                  │
 └─────────────────────────────────────┘
+```
 
 Each layer is developed and validated before higher-level functionality is introduced.
 
@@ -35,6 +37,7 @@ Each layer is developed and validated before higher-level functionality is intro
 
 The intended long-term architecture is:
 
+```text
 Flust
   ↓
 AI Kernel
@@ -45,40 +48,47 @@ Userspace
   ↓
 Mentacore Kernel
   ↓
-Rust Bootloader
+Rust UEFI Bootloader
   ↓
 UEFI
   ↓
 x86_64 Hardware
+```
 
-The architecture is intentionally developed from the lowest layer upward. The goal is to avoid depending on a conventional operating system for the core execution environment.
+The architecture is intentionally developed from the lowest layer upward. The goal is to eventually provide a complete execution environment without depending on a conventional operating system for the core system stack.
 
 ## Current Status
 
-**Pre-alpha — Kernel infrastructure / Phase 3 development**
+**Pre-alpha — Phase 3: Processes and Userspace**
 
-The boot process and core kernel infrastructure are operational.
+The system currently boots a custom Rust kernel through a custom UEFI bootloader and provides a functioning low-level kernel foundation.
 
 Phase 1 established the boot, memory-management, virtual-memory, heap, and framebuffer foundations.
 
-Phase 2 added CPU state management, interrupt and exception infrastructure, hardware timer support, and interrupt-safe kernel synchronization.
+Phase 2 established CPU state management, interrupt and exception infrastructure, hardware timer support, and interrupt-safe kernel synchronization.
 
-### Bootloader
+Phase 3 is now focused on introducing processes, threads, address spaces, scheduling, system calls, and userspace infrastructure.
+
+## Bootloader
 
 The custom Rust UEFI bootloader currently provides:
 
 * UEFI initialization
-* Kernel loading
+* Kernel ELF loading
+* PT_LOAD segment validation and loading
+* Kernel memory allocation
+* Kernel stack allocation
 * UEFI memory map acquisition
 * Framebuffer discovery
 * Preferred GOP mode selection
 * Boot information construction
-* Kernel stack allocation
 * Kernel handoff
-* Serial debugging support
 * Exit from UEFI boot services
+* Serial diagnostics
 
-### Kernel
+The bootloader transfers control directly to the kernel after constructing the boot information structure and leaving UEFI boot services.
+
+## Kernel
 
 The kernel currently provides:
 
@@ -102,93 +112,116 @@ The kernel currently provides:
 * Demand-paged kernel heap
 * Global kernel allocator
 * Multi-page heap allocation
-* GDT and CPU state initialization
+* GDT initialization
+* CPU state initialization
 * Task State Segment (TSS)
 * Kernel stack configuration
 * IST1 stack configuration
 * 256-entry IDT
 * Interrupt handler registration
 * Page fault handling
-* Double fault IST configuration
+* Double fault handling with IST1
 * LAPIC initialization
 * LAPIC MMIO mapping
 * PIT initialization
 * Hardware interrupt support
 * Timer interrupt handling
 * TSC calibration
-* Interrupt state save/restore
+* Interrupt state save and restore
 * Kernel spinlock
 * Interrupt-safe spinlock locking
 * Synchronized physical frame allocator access from exception context
 
-### Memory Management Validation
+## Kernel Initialization Architecture
 
-The implemented memory-management stack has been validated with kernel-side tests covering physical allocation, paging, mapping/unmapping, and heap allocation.
+Kernel startup is organized into dedicated initialization modules rather than keeping all boot logic inside `main.rs`.
 
-Current validated milestones include:
+```text
+kernel/src/boot/
+├── memory.rs
+├── paging.rs
+├── heap.rs
+├── cpu.rs
+├── lapic.rs
+├── interrupts.rs
+├── interrupt_controllers.rs
+└── display.rs
+```
 
-PHYSICAL FRAME FREE TEST OK
+The kernel entry point acts primarily as an orchestration layer, while subsystem-specific initialization remains isolated.
 
-PHYSICAL FRAME REUSE TEST OK
+This structure is intended to make the kernel easier to extend as processes, address spaces, scheduling, and userspace are introduced.
 
-PHYSICAL FRAME COUNTER TEST OK
+## Kernel Test Infrastructure
 
-PHYSICAL FRAME DOUBLE-FREE TEST OK
-
-PHYSICAL FRAME INVALID TEST OK
-
-PAGING DUPLICATE MAP TEST OK
-
-PAGING MAPPING TEST OK
-
-PAGING UNMAP TEST OK
-
-PAGING UNMAP REJECTION TEST OK
-
-HEAP TEST OK
-
-HEAP MULTI-PAGE TEST OK
-
-DISPLAY OK
-
-### Kernel Test Infrastructure
-
-Mentacore now includes a custom kernel-side test infrastructure designed for `no_std` execution.
+Mentacore includes a custom kernel-side test infrastructure designed specifically for `no_std` execution.
 
 The test system provides:
 
 * Custom `TestRunner` abstraction
 * Modular kernel test suites
-* Serial-based test result reporting
+* Serial-based test reporting
 * Test pass/fail tracking
 * Aggregate test results
-* QEMU-based automated test execution
-* Automated test timeout handling
+* QEMU-based automated execution
+* Automated timeout handling
+* Kernel-reported failure detection
 * Automated `ALL TESTS PASSED` detection
+
+The test infrastructure is enabled separately through the `kernel-tests` Cargo feature and does not depend on the standard Rust test harness.
+
+### Test Suites
 
 The current test suites cover:
 
-physical
-paging
-heap
-interrupts
-sync
-cpu / TSC
+* Physical frame allocation
+* Paging
+* Heap allocation
+* Interrupt state
+* Synchronization primitives
+* TSC calibration
 
 The complete kernel test suite currently validates:
 
+```text
 15/15 TESTS PASSED
 ALL TESTS PASSED
+```
 
-The test infrastructure is intentionally implemented inside the kernel rather than relying on the standard Rust test harness, allowing kernel subsystems to be validated in the actual `no_std` execution environment.
+Current validated tests include:
 
-### QEMU Test Runner
+```text
+PHYSICAL FRAME FREE TEST OK
+PHYSICAL FRAME REUSE TEST OK
+PHYSICAL FRAME COUNTER TEST OK
+PHYSICAL FRAME DOUBLE-FREE TEST OK
+PHYSICAL FRAME INVALID TEST OK
+
+PAGING DUPLICATE MAP TEST OK
+PAGING MAPPING TEST OK
+PAGING UNMAP TEST OK
+PAGING UNMAP REJECTION TEST OK
+
+HEAP TEST OK
+HEAP MULTI-PAGE TEST OK
+
+INTERRUPT STATE TEST OK
+
+SPINLOCK TEST OK
+SPINLOCK INTERRUPT-SAFE TEST OK
+
+TSC CALIBRATION OK
+```
+
+The test infrastructure is intentionally implemented inside the kernel so low-level subsystems can be validated in the actual `no_std` execution environment.
+
+## QEMU Test Runner
 
 A dedicated QEMU test runner is provided separately from the normal development runner.
 
 The test runner:
 
-* Builds the kernel
+* Builds the kernel with kernel tests enabled
 * Builds the bootloader
 * Prepares the EFI boot environment
 * Copies the kernel into the test ESP
@@ -196,91 +229,105 @@ The test runner:
 * Captures kernel serial output
 * Detects test completion
 * Reports the final test result
-* Fails on timeout or kernel-reported test failure
+* Fails on timeout
+* Fails when the kernel reports a test failure
 
-This provides a repeatable regression-testing workflow for kernel development without depending on the interactive development runner.
+This provides a repeatable regression-testing workflow without depending on the interactive development runner.
 
-### CPU and Interrupt Validation
+## Synchronization and Interrupt Safety
 
-CPU state, interrupt infrastructure, and synchronization primitives have also been validated in QEMU:
+Kernel global state is being progressively moved away from unnecessary raw global pointers.
 
-TSC READ TEST OK
+The physical frame allocator is protected by an interrupt-safe spinlock, allowing exception handlers such as the page fault handler to safely access allocator state.
 
-LAPIC REGISTER ACCESS OK
+The synchronization layer provides:
 
-IST1 TSS CONFIG OK
+* Atomic spinlock acquisition
+* RAII-based lock guards
+* Interrupt-state preservation
+* Interrupt disabling while holding interrupt-sensitive locks
+* Automatic interrupt-state restoration
 
-IDT DOUBLE FAULT IST CONFIG OK
-
-INTERRUPT STATE TEST OK
-
-SPINLOCK TEST OK
-
-SPINLOCK INTERRUPT-SAFE TEST OK
-
-LAPIC TIMER INTERRUPT
-
-TSC CALIBRATION OK
-
-The kernel has successfully handled demand-paged heap page faults after the physical frame allocator was moved behind an interrupt-safe synchronization primitive, removing the previous global raw allocator pointer.
+This provides the foundation required for increasingly concurrent kernel subsystems.
 
 ## Development Roadmap
 
-Phase 1 — Kernel Basic Infrastructure
-    ✓ UEFI memory map
-    ✓ Physical frame allocator
-    ✓ Page tables
-    ✓ Virtual memory
-    ✓ Kernel heap
-    ✓ Basic framebuffer output
+### Phase 1 — Kernel Basic Infrastructure
 
-Phase 2 — Kernel Services
-    ✓ Interrupt and exception foundation
-    ✓ GDT and CPU state
-    ✓ Timer infrastructure
-    ✓ Kernel synchronization
-    ✓ Interrupt-safe locking
-    ✓ Global kernel state audit
+```text
+✓ UEFI memory map
+✓ Physical frame allocator
+✓ Page tables
+✓ Virtual memory
+✓ Kernel heap
+✓ Basic framebuffer output
+```
 
-Phase 3 — Processes and Userspace
-    ├── Process abstraction
-    ├── Thread abstraction
-    ├── Address spaces
-    ├── Scheduler
-    ├── System calls
-    └── Userspace runtime
+### Phase 2 — Kernel Services
 
-Phase 4 — Filesystem and OS Services
-    ├── VFS architecture
-    ├── Filesystem abstraction
-    ├── Initial filesystem
-    ├── File handles
-    ├── Directories
-    ├── Storage layer
-    └── Basic OS services
+```text
+✓ Interrupt and exception foundation
+✓ GDT and CPU state
+✓ Timer infrastructure
+✓ Kernel synchronization
+✓ Interrupt-safe locking
+✓ Global kernel state audit
+```
 
-Phase 5 — Python Runtime
-    ├── Python runtime integration
-    ├── Python execution
-    ├── Import system
-    ├── Required kernel interfaces
-    └── Runtime services
+### Phase 3 — Processes and Userspace
 
-Phase 6 — AI Kernel
-    ├── AI kernel architecture
-    ├── Python-based AI kernel
-    ├── AI runtime layer
-    ├── Memory and context
-    ├── Tools
-    └── AI services
+```text
+├── Process abstraction
+├── Thread abstraction
+├── Address spaces
+├── Scheduler
+├── System calls
+└── Userspace runtime
+```
 
-Phase 7 — Flust
-    ├── Flust/Mentacore integration
-    ├── Python runtime interface
-    ├── Native UI services
-    ├── Required runtime support
-    ├── AI kernel integration
-    └── Run Flust directly on Mentacore
+### Phase 4 — Filesystem and OS Services
+
+```text
+├── VFS architecture
+├── Filesystem abstraction
+├── Initial filesystem
+├── File handles
+├── Directories
+├── Storage layer
+└── Basic OS services
+```
+
+### Phase 5 — Python Runtime
+
+```text
+├── Python runtime integration
+├── Python execution
+├── Import system
+├── Required kernel interfaces
+└── Runtime services
+```
+
+### Phase 6 — AI Kernel
+
+```text
+├── AI kernel architecture
+├── Python-based AI kernel
+├── AI runtime layer
+├── Memory and context
+├── Tools
+└── AI services
+```
+
+### Phase 7 — Flust
+
+```text
+├── Flust/Mentacore integration
+├── Python runtime interface
+├── Native UI services
+├── Required runtime support
+├── AI kernel integration
+└── Run Flust directly on Mentacore
+```
 
 ## Development Philosophy
 
@@ -294,7 +341,8 @@ The project follows several principles:
 * Avoid unnecessary complexity in early kernel stages.
 * Prefer explicit interfaces between system layers.
 * Keep the boot process and kernel understandable.
-* Use serial diagnostics extensively during low-level development.
+* Use serial diagnostics during low-level development.
+* Separate development tooling from kernel test infrastructure.
 * Document architectural decisions as the system evolves.
 
 The goal is not simply to produce a bootable kernel, but to build a complete operating-system stack whose architecture can eventually support an AI-native development environment.
@@ -315,24 +363,41 @@ The goal is not simply to produce a bootable kernel, but to build a complete ope
 
 ## Repository Structure
 
+```text
 Mentacore/
 ├── boot_protocol/
 ├── bootloader/
 ├── kernel/
 └── scripts/
+```
 
 The `boot_protocol` crate defines the interface between the bootloader and kernel.
 
-The `bootloader` crate is responsible for preparing the machine and transferring control to the kernel.
+The `bootloader` crate is responsible for preparing the machine, loading the kernel, constructing boot information, and transferring control to the kernel.
 
 The `kernel` crate contains the operating-system kernel and its low-level subsystems.
 
 The `scripts` directory contains development and QEMU execution tooling.
 
+## Development Workflow
+
+Mentacore provides separate workflows for development and automated kernel testing.
+
+### Development Runner
+
+The development runner builds the kernel and bootloader, prepares the EFI environment, and starts QEMU for interactive development.
+
+### Test Runner
+
+The test runner builds the kernel with the `kernel-tests` feature and executes the kernel test suite automatically inside QEMU.
+
+This separation keeps normal kernel execution independent from the test infrastructure while still allowing low-level regression testing.
+
 ## Long-Term Goal
 
 The final system is intended to look conceptually like:
 
+```text
 ┌──────────────────────────────┐
 │            Flust             │
 ├──────────────────────────────┤
@@ -350,6 +415,7 @@ The final system is intended to look conceptually like:
 ├──────────────────────────────┤
 │         x86_64 CPU           │
 └──────────────────────────────┘
+```
 
 Mentacore is currently far from this final architecture, but development is proceeding toward it layer by layer.
 

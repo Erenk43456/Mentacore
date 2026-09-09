@@ -269,23 +269,33 @@
 
 # Long-Term Architecture
 
-Hardware
-   ↓
-UEFI
-   ↓
-Mentacore Bootloader
-   ↓
-Mentacore Kernel
-   ↓
-Userspace
-   ↓
-Filesystem / OS Services
-   ↓
-Python Runtime
-   ↓
-AI Kernel
-   ↓
-Flust
+```text
+┌──────────────────────────────────────┐
+│                Flust                 │
+│       AI Development Environment     │
+├──────────────────────────────────────┤
+│             AI Kernel                │
+│          Python-based                │
+├──────────────────────────────────────┤
+│           Python Runtime             │
+├──────────────────────────────────────┤
+│             Userspace                │
+│                                      │
+│  Applications / System Services      │
+├──────────────────────────────────────┤
+│        Filesystem / OS Services      │
+├──────────────────────────────────────┤
+│          Mentacore Kernel            │
+│               Rust                   │
+├──────────────────────────────────────┤
+│       Mentacore Bootloader           │
+│               Rust                   │
+├──────────────────────────────────────┤
+│               UEFI                   │
+├──────────────────────────────────────┤
+│            x86_64 Hardware           │
+└──────────────────────────────────────┘
+```
 
 # Development Principles
 
