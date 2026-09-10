@@ -94,65 +94,93 @@ struct IdtPointer {
 const REGISTER_FRAME_SIZE: usize =
     9 * core::mem::size_of::<u64>();
 
-const INTERRUPT_FRAME_WORD_SIZE: usize =
-    core::mem::size_of::<u64>();
+#[repr(C)]
+pub struct TrapFrame {
+    pub r11: u64,
+    pub r10: u64,
+    pub r9: u64,
+    pub r8: u64,
+    pub rdi: u64,
+    pub rsi: u64,
+    pub rdx: u64,
+    pub rcx: u64,
+    pub rax: u64,
 
-const CPU_ERROR_CODE_OFFSET: usize =
-    REGISTER_FRAME_SIZE;
-
-const CPU_RIP_OFFSET: usize =
-    CPU_ERROR_CODE_OFFSET
-        + INTERRUPT_FRAME_WORD_SIZE;
-
-const CPU_CS_OFFSET: usize =
-    CPU_RIP_OFFSET
-        + INTERRUPT_FRAME_WORD_SIZE;
-
-const CPU_RFLAGS_OFFSET: usize =
-    CPU_CS_OFFSET
-        + INTERRUPT_FRAME_WORD_SIZE;
-
-const CPU_NO_ERROR_RIP_OFFSET: usize =
-    CPU_ERROR_CODE_OFFSET;
-
-const _: () = assert!(
-    REGISTER_FRAME_SIZE ==
-        9 * INTERRUPT_FRAME_WORD_SIZE
-);
-
-const _: () = assert!(
-    CPU_ERROR_CODE_OFFSET ==
-        REGISTER_FRAME_SIZE
-);
-
-const _: () = assert!(
-    CPU_RIP_OFFSET ==
-        CPU_ERROR_CODE_OFFSET
-            + INTERRUPT_FRAME_WORD_SIZE
-);
-
-const _: () = assert!(
-    CPU_CS_OFFSET ==
-        CPU_RIP_OFFSET
-            + INTERRUPT_FRAME_WORD_SIZE
-);
-
-const _: () = assert!(
-    CPU_RFLAGS_OFFSET ==
-        CPU_CS_OFFSET
-            + INTERRUPT_FRAME_WORD_SIZE
-);
-
-unsafe fn read_frame_u64(
-    register_frame: *const u64,
-    offset: usize,
-) -> u64 {
-    unsafe {
-        *((register_frame as *const u8)
-            .add(offset)
-            as *const u64)
-    }
+    pub error_code: u64,
+    pub rip: u64,
+    pub cs: u64,
+    pub rflags: u64,
 }
+
+const _: () = assert!(
+    core::mem::size_of::<TrapFrame>()
+        == 13 * core::mem::size_of::<u64>()
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, r11)
+        == 0
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, r10)
+        == 8
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, r9)
+        == 16
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, r8)
+        == 24
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, rdi)
+        == 32
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, rsi)
+        == 40
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, rdx)
+        == 48
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, rcx)
+        == 56
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, rax)
+        == 64
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, error_code)
+        == 72
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, rip)
+        == 80
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, cs)
+        == 88
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(TrapFrame, rflags)
+        == 96
+);
 
 static mut IDT: [IdtEntry; 256] =
     [const { IdtEntry::missing() }; 256];
@@ -194,7 +222,7 @@ unsafe extern "C" {
 
 #[unsafe(no_mangle)]
 extern "C" fn divide_error_dispatch(
-    register_frame: *const u64,
+    trap_frame: *const TrapFrame,
 ) -> ! {
     serial_write(b"\r\n");
     serial_write(b"================================\r\n");
@@ -203,10 +231,7 @@ extern "C" fn divide_error_dispatch(
 
     unsafe {
         let instruction_pointer =
-            read_frame_u64(
-                register_frame,
-                CPU_NO_ERROR_RIP_OFFSET,
-            );
+            unsafe { (*trap_frame).rip };
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
@@ -220,7 +245,7 @@ extern "C" fn divide_error_dispatch(
 
 #[unsafe(no_mangle)]
 extern "C" fn invalid_opcode_dispatch(
-    register_frame: *const u64,
+    trap_frame: *const TrapFrame,
 ) -> ! {
     serial_write(b"\r\n");
     serial_write(b"================================\r\n");
@@ -229,10 +254,7 @@ extern "C" fn invalid_opcode_dispatch(
 
     unsafe {
         let instruction_pointer =
-            read_frame_u64(
-                register_frame,
-                CPU_NO_ERROR_RIP_OFFSET,
-            );
+            unsafe { (*trap_frame).rip };
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
@@ -246,7 +268,7 @@ extern "C" fn invalid_opcode_dispatch(
 
 #[unsafe(no_mangle)]
 extern "C" fn double_fault_dispatch(
-    register_frame: *const u64,
+    trap_frame: *const TrapFrame,
     error_code: u64,
     cpu_rsp: u64,
 ) -> ! {
@@ -301,41 +323,30 @@ extern "C" fn double_fault_dispatch(
         );
     }
 
+    let instruction_pointer =
+        unsafe { (*trap_frame).rip };
+
+    let code_segment =
+        unsafe { (*trap_frame).cs };
+
+    let rflags =
+        unsafe { (*trap_frame).rflags };
+
     serial_write(b"Error code: ");
     serial_write_hex(error_code);
     serial_write(b"\r\n");
 
-    unsafe {
-        let instruction_pointer =
-            read_frame_u64(
-                register_frame,
-                CPU_RIP_OFFSET,
-            );
+    serial_write(b"Instruction pointer: ");
+    serial_write_hex(instruction_pointer);
+    serial_write(b"\r\n");
 
-        let code_segment =
-            read_frame_u64(
-                register_frame,
-                CPU_CS_OFFSET,
-            );
+    serial_write(b"CS: ");
+    serial_write_hex(code_segment);
+    serial_write(b"\r\n");
 
-        let rflags =
-            read_frame_u64(
-                register_frame,
-                CPU_RFLAGS_OFFSET,
-            );
-
-        serial_write(b"Instruction pointer: ");
-        serial_write_hex(instruction_pointer);
-        serial_write(b"\r\n");
-
-        serial_write(b"CS: ");
-        serial_write_hex(code_segment);
-        serial_write(b"\r\n");
-
-        serial_write(b"RFLAGS: ");
-        serial_write_hex(rflags);
-        serial_write(b"\r\n");
-    }
+    serial_write(b"RFLAGS: ");
+    serial_write_hex(rflags);
+    serial_write(b"\r\n");
 
     #[cfg(feature = "kernel-tests")]
     {
@@ -385,7 +396,7 @@ extern "C" fn double_fault_dispatch(
 
 #[unsafe(no_mangle)]
 extern "C" fn general_protection_dispatch(
-    register_frame: *const u64,
+    trap_frame: *const TrapFrame,
     error_code: u64,
 ) -> ! {
     serial_write(b"\r\n");
@@ -397,17 +408,12 @@ extern "C" fn general_protection_dispatch(
     serial_write_hex(error_code);
     serial_write(b"\r\n");
 
-    unsafe {
-        let instruction_pointer =
-            read_frame_u64(
-                register_frame,
-                CPU_RIP_OFFSET,
-            );
+    let instruction_pointer =
+        unsafe { (*trap_frame).rip };
 
-        serial_write(b"Instruction pointer: ");
-        serial_write_hex(instruction_pointer);
-        serial_write(b"\r\n");
-    }
+    serial_write(b"Instruction pointer: ");
+    serial_write_hex(instruction_pointer);
+    serial_write(b"\r\n");
 
     loop {
         core::hint::spin_loop();
@@ -487,7 +493,7 @@ pub fn trigger_double_fault_test() -> ! {
 
 #[unsafe(no_mangle)]
 extern "C" fn page_fault_dispatch(
-    register_frame: *const u64,
+    trap_frame: *const TrapFrame,
     error_code: u64,
 ) {
     let fault_address: u64;
@@ -513,37 +519,26 @@ extern "C" fn page_fault_dispatch(
     serial_write_hex(error_code);
     serial_write(b"\r\n");
 
-    unsafe {
-        let instruction_pointer =
-            read_frame_u64(
-                register_frame,
-                CPU_RIP_OFFSET,
-            );
+    let instruction_pointer =
+        unsafe { (*trap_frame).rip };
 
-        let code_segment =
-            read_frame_u64(
-                register_frame,
-                CPU_CS_OFFSET,
-            );
+    let code_segment =
+        unsafe { (*trap_frame).cs };
 
-        let rflags =
-            read_frame_u64(
-                register_frame,
-                CPU_RFLAGS_OFFSET,
-            );
+    let rflags =
+        unsafe { (*trap_frame).rflags };
 
-        serial_write(b"Instruction pointer: ");
-        serial_write_hex(instruction_pointer);
-        serial_write(b"\r\n");
+    serial_write(b"Instruction pointer: ");
+    serial_write_hex(instruction_pointer);
+    serial_write(b"\r\n");
 
-        serial_write(b"CS: ");
-        serial_write_hex(code_segment);
-        serial_write(b"\r\n");
+    serial_write(b"CS: ");
+    serial_write_hex(code_segment);
+    serial_write(b"\r\n");
 
-        serial_write(b"RFLAGS: ");
-        serial_write_hex(rflags);
-        serial_write(b"\r\n");
-    }
+    serial_write(b"RFLAGS: ");
+    serial_write_hex(rflags);
+    serial_write(b"\r\n");
 
     // Bit 0 = 1:
     // Page is present, but access was denied.

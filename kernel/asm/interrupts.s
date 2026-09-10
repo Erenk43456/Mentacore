@@ -70,6 +70,7 @@ divide_error_entry:
     push r9
     push r10
     push r11
+    push 0
 
     ; Preserve the register-frame pointer before
     ; applying any ABI alignment padding.
@@ -102,6 +103,7 @@ invalid_opcode_entry:
     push r9
     push r10
     push r11
+    push 0
 
     ; Preserve the register-frame pointer before
     ; applying any ABI alignment padding.
