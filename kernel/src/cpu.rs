@@ -434,9 +434,11 @@ fn initialize_tss_stacks() {
     }
 }
 
-pub fn ist1_stack_top() -> u64 {
-    core::ptr::addr_of!(IST1_STACK) as u64
-        + IST1_STACK_SIZE as u64
+pub fn ist1_stack_range() -> (u64, u64) {
+    let start = core::ptr::addr_of!(IST1_STACK) as u64;
+    let end = start + IST1_STACK_SIZE as u64;
+
+    (start, end)
 }
 
 #[cfg(feature = "verbose-boot")]

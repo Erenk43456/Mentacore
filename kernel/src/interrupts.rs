@@ -182,11 +182,8 @@ extern "C" fn double_fault_dispatch(
     serial_write(b"       DOUBLE FAULT (#DF)\r\n");
     serial_write(b"================================\r\n");
 
-    let ist1_top =
-        crate::cpu::ist1_stack_top();
-
-    let ist1_start =
-        ist1_top - 16 * 1024;
+    let (ist1_start, ist1_top) =
+        crate::cpu::ist1_stack_range();
 
     serial_write(b"CPU RSP after IST switch: ");
     serial_write_hex(cpu_rsp);
