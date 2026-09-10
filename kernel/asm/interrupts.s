@@ -1,5 +1,40 @@
 bits 64
 
+INTERRUPT_FRAME_WORD_SIZE equ 8
+
+REGISTER_FRAME_SIZE       equ 9 * INTERRUPT_FRAME_WORD_SIZE
+CPU_ERROR_CODE_OFFSET     equ REGISTER_FRAME_SIZE
+CPU_RIP_OFFSET            equ CPU_ERROR_CODE_OFFSET + INTERRUPT_FRAME_WORD_SIZE
+CPU_CS_OFFSET             equ CPU_RIP_OFFSET + INTERRUPT_FRAME_WORD_SIZE
+CPU_RFLAGS_OFFSET         equ CPU_CS_OFFSET + INTERRUPT_FRAME_WORD_SIZE
+DF_CPU_RSP_OFFSET          equ REGISTER_FRAME_SIZE - INTERRUPT_FRAME_WORD_SIZE
+
+; ------------------------------------------------------------
+; Interrupt register-frame layout
+;
+; The entry stubs push registers in this order:
+;   rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11
+;
+; Because the stack grows downward, the resulting frame is:
+;
+;   +00  r11
+;   +08  r10
+;   +16  r9
+;   +24  r8
+;   +32  rdi
+;   +40  rsi
+;   +48  rdx
+;   +56  rcx
+;   +64  rax
+;   +72  CPU error code (error-code exceptions)
+;   +80  CPU RIP
+;   +88  CPU CS
+;   +96  CPU RFLAGS
+;
+; For #DF, +64 contains the CPU RSP saved before the
+; register pushes by double_fault_entry.
+; ------------------------------------------------------------
+
 section .text
 
 extern divide_error_dispatch
@@ -107,10 +142,10 @@ double_fault_entry:
     mov rdi, rsp
 
     ; CPU-pushed #DF error code.
-    mov rsi, [rdi + 72]
+    mov rsi, [rdi + CPU_ERROR_CODE_OFFSET]
 
-    ; CPU RSP after the IST1 switch.
-    mov rdx, [rdi + 64]
+    ; CPU RSP saved by the entry stub at DF_CPU_RSP_OFFSET.
+    mov rdx, [rdi + DF_CPU_RSP_OFFSET]
 
     ; Normalize the SysV x86-64 call-site alignment.
     test rsp, 8
@@ -143,8 +178,8 @@ general_protection_entry:
     ; applying ABI alignment padding.
     mov rdi, rsp
 
-    ; CPU-pushed error code is at [register_frame + 72].
-    mov rsi, [rdi + 72]
+    ; CPU-pushed error code is at CPU_ERROR_CODE_OFFSET.
+    mov rsi, [rdi + CPU_ERROR_CODE_OFFSET]
 
     ; SysV x86-64 ABI:
     ;   call-site RSP % 16 == 0
@@ -178,8 +213,8 @@ page_fault_entry:
     ; applying ABI alignment padding.
     mov rdi, rsp
 
-    ; CPU-pushed error code is at [register_frame + 72].
-    mov rsi, [rdi + 72]
+    ; CPU-pushed error code is at CPU_ERROR_CODE_OFFSET.
+    mov rsi, [rdi + CPU_ERROR_CODE_OFFSET]
 
     ; Normalize the call-site stack alignment.
     test rsp, 8

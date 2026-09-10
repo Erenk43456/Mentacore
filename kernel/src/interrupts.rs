@@ -91,6 +91,69 @@ struct IdtPointer {
     base: u64,
 }
 
+const REGISTER_FRAME_SIZE: usize =
+    9 * core::mem::size_of::<u64>();
+
+const INTERRUPT_FRAME_WORD_SIZE: usize =
+    core::mem::size_of::<u64>();
+
+const CPU_ERROR_CODE_OFFSET: usize =
+    REGISTER_FRAME_SIZE;
+
+const CPU_RIP_OFFSET: usize =
+    CPU_ERROR_CODE_OFFSET
+        + INTERRUPT_FRAME_WORD_SIZE;
+
+const CPU_CS_OFFSET: usize =
+    CPU_RIP_OFFSET
+        + INTERRUPT_FRAME_WORD_SIZE;
+
+const CPU_RFLAGS_OFFSET: usize =
+    CPU_CS_OFFSET
+        + INTERRUPT_FRAME_WORD_SIZE;
+
+const CPU_NO_ERROR_RIP_OFFSET: usize =
+    CPU_ERROR_CODE_OFFSET;
+
+const _: () = assert!(
+    REGISTER_FRAME_SIZE ==
+        9 * INTERRUPT_FRAME_WORD_SIZE
+);
+
+const _: () = assert!(
+    CPU_ERROR_CODE_OFFSET ==
+        REGISTER_FRAME_SIZE
+);
+
+const _: () = assert!(
+    CPU_RIP_OFFSET ==
+        CPU_ERROR_CODE_OFFSET
+            + INTERRUPT_FRAME_WORD_SIZE
+);
+
+const _: () = assert!(
+    CPU_CS_OFFSET ==
+        CPU_RIP_OFFSET
+            + INTERRUPT_FRAME_WORD_SIZE
+);
+
+const _: () = assert!(
+    CPU_RFLAGS_OFFSET ==
+        CPU_CS_OFFSET
+            + INTERRUPT_FRAME_WORD_SIZE
+);
+
+unsafe fn read_frame_u64(
+    register_frame: *const u64,
+    offset: usize,
+) -> u64 {
+    unsafe {
+        *((register_frame as *const u8)
+            .add(offset)
+            as *const u64)
+    }
+}
+
 static mut IDT: [IdtEntry; 256] =
     [const { IdtEntry::missing() }; 256];
 
@@ -136,7 +199,10 @@ extern "C" fn divide_error_dispatch(
 
     unsafe {
         let instruction_pointer =
-            *((register_frame as *const u8).add(72) as *const u64);
+            read_frame_u64(
+                register_frame,
+                CPU_NO_ERROR_RIP_OFFSET,
+            );
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
@@ -159,7 +225,10 @@ extern "C" fn invalid_opcode_dispatch(
 
     unsafe {
         let instruction_pointer =
-            *((register_frame as *const u8).add(72) as *const u64);
+            read_frame_u64(
+                register_frame,
+                CPU_NO_ERROR_RIP_OFFSET,
+            );
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
@@ -217,16 +286,22 @@ extern "C" fn double_fault_dispatch(
 
     unsafe {
         let instruction_pointer =
-            *((register_frame as *const u8).add(80)
-                as *const u64);
+            read_frame_u64(
+                register_frame,
+                CPU_RIP_OFFSET,
+            );
 
         let code_segment =
-            *((register_frame as *const u8).add(88)
-                as *const u64);
+            read_frame_u64(
+                register_frame,
+                CPU_CS_OFFSET,
+            );
 
         let rflags =
-            *((register_frame as *const u8).add(96)
-                as *const u64);
+            read_frame_u64(
+                register_frame,
+                CPU_RFLAGS_OFFSET,
+            );
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
@@ -303,7 +378,10 @@ extern "C" fn general_protection_dispatch(
 
     unsafe {
         let instruction_pointer =
-            *((register_frame as *const u8).add(80) as *const u64);
+            read_frame_u64(
+                register_frame,
+                CPU_RIP_OFFSET,
+            );
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
@@ -411,13 +489,22 @@ extern "C" fn page_fault_dispatch(
 
     unsafe {
         let instruction_pointer =
-            *((register_frame as *const u8).add(80) as *const u64);
+            read_frame_u64(
+                register_frame,
+                CPU_RIP_OFFSET,
+            );
 
         let code_segment =
-            *((register_frame as *const u8).add(88) as *const u64);
+            read_frame_u64(
+                register_frame,
+                CPU_CS_OFFSET,
+            );
 
         let rflags =
-            *((register_frame as *const u8).add(96) as *const u64);
+            read_frame_u64(
+                register_frame,
+                CPU_RFLAGS_OFFSET,
+            );
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
