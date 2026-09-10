@@ -276,7 +276,17 @@ extern "C" fn general_protection_dispatch(
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn timer_irq_dispatch() {
+extern "C" fn timer_irq_dispatch(
+    dispatch_rsp: u64,
+) {
+    #[cfg(feature = "kernel-tests")]
+    crate::tests::interrupts::record_timer_dispatch_rsp(
+        dispatch_rsp,
+    );
+
+    #[cfg(not(feature = "kernel-tests"))]
+    let _ = dispatch_rsp;
+
     TIMER_TICKS.fetch_add(
         1,
         Ordering::Relaxed,

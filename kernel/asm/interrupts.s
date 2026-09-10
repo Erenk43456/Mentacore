@@ -166,8 +166,29 @@ timer_irq_entry:
     push r10
     push r11
 
+    ; RSP at this point is the stack pointer
+    ; immediately before the Rust call.
+    ;
+    ; SysV x86-64 ABI:
+    ;   call-site RSP % 16 == 0
+    ;   Rust entry RSP % 16 == 8
+
+    test rsp, 8
+    jz .timer_dispatch_aligned
+
+    sub rsp, 8
+
+    mov rdi, rsp
     call timer_irq_dispatch
 
+    add rsp, 8
+    jmp .timer_dispatch_done
+
+.timer_dispatch_aligned:
+    mov rdi, rsp
+    call timer_irq_dispatch
+
+.timer_dispatch_done:
     pop r11
     pop r10
     pop r9

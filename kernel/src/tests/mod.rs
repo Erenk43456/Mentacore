@@ -4,7 +4,7 @@ mod paging;
 mod heap;
 mod sync;
 mod tsc;
-mod interrupts;
+pub mod interrupts;
 
 use crate::debug;
 use crate::memory::physical::PhysicalFrameAllocator;
