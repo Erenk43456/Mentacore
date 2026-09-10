@@ -1,59 +1,7 @@
 use crate::memory;
 use crate::memory::physical::PhysicalFrameAllocator;
 
-use super::framework::TestRunner;
-
-pub fn run(
-    runner: &mut TestRunner,
-    allocator: &mut PhysicalFrameAllocator,
-) {
-    runner.run(
-        b"paging::duplicate_mapping",
-        || test_duplicate_mapping(allocator),
-    );
-
-    runner.run(
-        b"paging::mapping",
-        || test_mapping(allocator),
-    );
-
-    runner.run(
-        b"paging::unmap",
-        || test_unmap(allocator),
-    );
-
-    runner.run(
-        b"paging::unmap_rejection",
-        || test_unmap_rejection(allocator),
-    );
-
-    runner.run(
-        b"paging::user_mapping_permissions",
-        || test_user_mapping_permissions(allocator),
-    );
-
-    runner.run(
-        b"paging::virtual_address_layout",
-        || test_virtual_address_layout(),
-    );
-
-    runner.run(
-        b"paging::address_space",
-        || test_address_space_abstraction(),
-    );
-
-    runner.run(
-        b"paging::address_space_mapping",
-        || test_address_space_mapping(allocator),
-    );
-
-    runner.run(
-        b"paging::address_space_unmapping",
-        || test_address_space_unmapping(allocator),
-    );
-}
-
-fn test_duplicate_mapping(
+pub(super) fn test_duplicate_mapping(
     allocator: &mut PhysicalFrameAllocator,
 ) -> bool {
     let duplicate_virtual =
@@ -129,7 +77,7 @@ fn test_duplicate_mapping(
         .unwrap_or(false)
 }
 
-fn test_mapping(
+pub(super) fn test_mapping(
     allocator: &mut PhysicalFrameAllocator,
 ) -> bool {
     let mapping_virtual =
@@ -201,7 +149,7 @@ fn test_mapping(
     true
 }
 
-fn test_unmap(
+pub(super) fn test_unmap(
     allocator: &mut PhysicalFrameAllocator,
 ) -> bool {
     let unmap_virtual =
@@ -351,7 +299,7 @@ fn test_unmap(
     true
 }
 
-fn test_unmap_rejection(
+pub(super) fn test_unmap_rejection(
     allocator: &mut PhysicalFrameAllocator,
 ) -> bool {
     let _ = allocator;
@@ -417,7 +365,7 @@ fn test_unmap_rejection(
     true
 }
 
-fn test_user_mapping_permissions(
+pub(super) fn test_user_mapping_permissions(
     allocator: &mut PhysicalFrameAllocator,
 ) -> bool {
     let user_virtual =
@@ -588,232 +536,4 @@ fn test_user_mapping_permissions(
     }
 
     true
-}
-
-fn test_virtual_address_layout() -> bool {
-    use crate::memory::paging::{
-        KERNEL_SPACE_END,
-        KERNEL_SPACE_START,
-        USER_SPACE_END,
-        USER_SPACE_START,
-    };
-
-    if USER_SPACE_START > USER_SPACE_END {
-        return false;
-    }
-
-    if KERNEL_SPACE_START > KERNEL_SPACE_END {
-        return false;
-    }
-
-    if USER_SPACE_END >= KERNEL_SPACE_START {
-        return false;
-    }
-
-    if !crate::memory::paging::is_user_address(
-        USER_SPACE_START,
-    ) {
-        return false;
-    }
-
-    if !crate::memory::paging::is_user_address(
-        USER_SPACE_END,
-    ) {
-        return false;
-    }
-
-    if !crate::memory::paging::is_kernel_address(
-        KERNEL_SPACE_START,
-    ) {
-        return false;
-    }
-
-    if !crate::memory::paging::is_kernel_address(
-        KERNEL_SPACE_END,
-    ) {
-        return false;
-    }
-
-    let user_kernel_boundary =
-        0x0000_8000_0000_0000;
-
-    if crate::memory::paging::is_user_address(
-        user_kernel_boundary,
-    ) {
-        return false;
-    }
-
-    if crate::memory::paging::is_kernel_address(
-        user_kernel_boundary,
-    ) {
-        return false;
-    }
-
-    true
-}
-
-fn test_address_space_abstraction() -> bool {
-    let pml4 =
-        unsafe {
-            memory::paging::current_pml4()
-        };
-
-    let address_space =
-        unsafe {
-            memory::paging::AddressSpace::from_pml4(pml4)
-        };
-
-    address_space.pml4() == pml4
-}
-
-fn test_address_space_mapping(
-    allocator: &mut PhysicalFrameAllocator,
-) -> bool {
-    let virtual_address =
-        0x0000_6000_0000_0000;
-
-    let pml4 =
-        unsafe {
-            memory::paging::current_pml4()
-        };
-
-    let address_space =
-        unsafe {
-            memory::paging::AddressSpace::from_pml4(
-                pml4,
-            )
-        };
-
-    let frame =
-        match allocator.allocate_frame() {
-            Some(frame) => frame,
-            None => return false,
-        };
-
-    unsafe {
-        if address_space
-            .map(
-                allocator,
-                virtual_address,
-                frame.start_address,
-                memory::paging::PageFlags {
-                    writable: true,
-                    cache_disable: false,
-                    user: true,
-                },
-            )
-            .is_err()
-        {
-            return false;
-        }
-    }
-
-    let entries =
-        unsafe {
-            match memory::paging::test_entry(
-                pml4,
-                virtual_address,
-            ) {
-                Some(entries) => entries,
-                None => return false,
-            }
-        };
-
-    let user_bit = 1u64 << 2;
-
-    if entries[3] & 1 == 0 {
-        return false;
-    }
-
-    if entries[3] & user_bit == 0 {
-        return false;
-    }
-
-    true
-}
-
-fn test_address_space_unmapping(
-    allocator: &mut PhysicalFrameAllocator,
-) -> bool {
-    let virtual_address =
-        0x0000_6000_0000_1000;
-
-    let pml4 =
-        unsafe {
-            memory::paging::current_pml4()
-        };
-
-    let address_space =
-        unsafe {
-            memory::paging::AddressSpace::from_pml4(
-                pml4,
-            )
-        };
-
-    let frame =
-        match allocator.allocate_frame() {
-            Some(frame) => frame,
-            None => return false,
-        };
-
-    let physical_address =
-        frame.start_address;
-
-    unsafe {
-        if address_space
-            .map(
-                allocator,
-                virtual_address,
-                physical_address,
-                memory::paging::PageFlags {
-                    writable: true,
-                    cache_disable: false,
-                    user: true,
-                },
-            )
-            .is_err()
-        {
-            return false;
-        }
-    }
-
-    let mapped =
-        unsafe {
-            memory::paging::test_entry(
-                pml4,
-                virtual_address,
-            )
-        };
-
-    let mapped =
-        match mapped {
-            Some(entries) => entries,
-            None => return false,
-        };
-
-    if mapped[3] & 1 == 0 {
-        return false;
-    }
-
-    let unmapped =
-        unsafe {
-            address_space.unmap(virtual_address)
-        };
-
-    if unmapped != Ok(physical_address) {
-        return false;
-    }
-
-    let after_unmap =
-        unsafe {
-            memory::paging::test_entry(
-                pml4,
-                virtual_address,
-            )
-        };
-
-    match after_unmap {
-        Some(entries) => entries[3] & 1 == 0,
-        None => true,
-    }
 }
