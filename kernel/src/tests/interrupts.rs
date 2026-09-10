@@ -26,6 +26,11 @@ pub fn run(
     );
 
     runner.run(
+        b"interrupts::timer_stability",
+        test_timer_stability,
+    );
+
+    runner.run(
         b"interrupts::lapic_timer_stack_alignment",
         || test_lapic_timer_stack_alignment(lapic),
     );
@@ -169,6 +174,53 @@ fn test_timer_stack_alignment() -> bool {
     // RSP must be 16-byte aligned immediately
     // before the CALL instruction.
     alignment == 0
+}
+
+fn test_timer_stability() -> bool {
+    let mut previous_ticks =
+        crate::interrupts::timer_ticks();
+
+    for _ in 0..8 {
+        let target_ticks =
+            previous_ticks + 1;
+
+        let mut advanced = false;
+
+        for _ in 0..10_000_000 {
+            let current_ticks =
+                crate::interrupts::timer_ticks();
+
+            if current_ticks >= target_ticks {
+                debug::write(
+                    b"\r\n[TIMER STABILITY] tick = ",
+                );
+                debug::write_hex(current_ticks);
+                debug::write(b"\r\n");
+
+                if current_ticks <= previous_ticks {
+                    return false;
+                }
+
+                previous_ticks = current_ticks;
+                advanced = true;
+                break;
+            }
+
+            core::hint::spin_loop();
+        }
+
+        if !advanced {
+            debug::write(
+                b"\r\n[TIMER STABILITY] timeout, ticks = ",
+            );
+            debug::write_hex(previous_ticks);
+            debug::write(b"\r\n");
+
+            return false;
+        }
+    }
+
+    true
 }
 
 fn test_lapic_timer_stack_alignment(
