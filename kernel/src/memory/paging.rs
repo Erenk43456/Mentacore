@@ -15,6 +15,18 @@ const USER: u64 = 1 << 2;
 
 const IDENTITY_MAP_SIZE: u64 = 0x1_0000_0000;
 
+pub const USER_SPACE_START: u64 =
+    0x0000_0000_0000_0000;
+
+pub const USER_SPACE_END: u64 =
+    0x0000_7FFF_FFFF_FFFF;
+
+pub const KERNEL_SPACE_START: u64 =
+    0xFFFF_8000_0000_0000;
+
+pub const KERNEL_SPACE_END: u64 =
+    0xFFFF_FFFF_FFFF_FFFF;
+
 #[derive(Clone, Copy)]
 pub struct PageFlags {
     pub writable: bool,
@@ -403,8 +415,14 @@ fn is_valid_physical_address(address: u64) -> bool {
     (address >> 52) == 0
 }
 
-fn is_user_address(address: u64) -> bool {
-    address < 0x0000_8000_0000_0000
+pub fn is_user_address(address: u64) -> bool {
+    address >= USER_SPACE_START
+        && address <= USER_SPACE_END
+}
+
+pub fn is_kernel_address(address: u64) -> bool {
+    address >= KERNEL_SPACE_START
+        && address <= KERNEL_SPACE_END
 }
 
 pub unsafe fn map_page(
