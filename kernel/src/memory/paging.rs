@@ -880,7 +880,9 @@ impl AddressSpace {
     }
 
     pub unsafe fn mapper(&self) -> Mapper {
-        Mapper::new(self.pml4)
+        unsafe {
+            Mapper::new(self.pml4)
+        }
     }
 
     pub unsafe fn map(
@@ -903,14 +905,29 @@ impl AddressSpace {
             )
         }
     }
+
+    pub unsafe fn unmap(
+        &self,
+        virtual_address: u64,
+    ) -> Result<u64, ()> {
+        let mapper = unsafe {
+            Mapper::new(self.pml4)
+        };
+
+        unsafe {
+            mapper.unmap(virtual_address)
+        }
     }
+}
 
 pub struct Mapper {
     pml4: *mut PageTable,
 }
 
 impl Mapper {
-    pub unsafe fn new(pml4: *mut PageTable) -> Self {
+    pub unsafe fn new(
+        pml4: *mut PageTable,
+    ) -> Self {
         Self { pml4 }
     }
 
@@ -933,7 +950,7 @@ impl Mapper {
     }
 
     pub unsafe fn unmap(
-        &mut self,
+        &self,
         virtual_address: u64,
     ) -> Result<u64, ()> {
         unsafe {
