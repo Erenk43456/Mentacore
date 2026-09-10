@@ -217,6 +217,7 @@ lapic_timer_entry:
     push r10
     push r11
 
+    mov rdi, rsp
     call lapic_timer_dispatch
 
     pop r11

@@ -298,12 +298,23 @@ extern "C" fn timer_irq_dispatch(
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn lapic_timer_dispatch() {
+extern "C" fn lapic_timer_dispatch(
+    dispatch_rsp: u64,
+) {
     #[cfg(feature = "kernel-tests")]
-    LAPIC_TIMER_TICKS.fetch_add(
-        1,
-        Ordering::Relaxed,
-    );
+    {
+        crate::tests::interrupts::record_lapic_timer_dispatch_rsp(
+            dispatch_rsp,
+        );
+
+        LAPIC_TIMER_TICKS.fetch_add(
+            1,
+            Ordering::Relaxed,
+        );
+    }
+
+    #[cfg(not(feature = "kernel-tests"))]
+    let _ = dispatch_rsp;
 
     unsafe {
         crate::hardware::lapic::write_global_eoi();
