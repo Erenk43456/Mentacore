@@ -90,6 +90,7 @@ invalid_opcode_entry:
 double_fault_entry:
     cli
 
+    ; Save the CPU RSP after the IST1 switch.
     mov rax, rsp
 
     push rax
@@ -102,14 +103,22 @@ double_fault_entry:
     push r10
     push r11
 
+    ; Preserve the register-frame pointer.
     mov rdi, rsp
 
     ; CPU-pushed #DF error code.
-    mov rsi, [rsp + 72]
+    mov rsi, [rdi + 72]
 
-    ; First pushed RAX = CPU RSP after IST switch.
-    mov rdx, [rsp + 64]
+    ; CPU RSP after the IST1 switch.
+    mov rdx, [rdi + 64]
 
+    ; Normalize the SysV x86-64 call-site alignment.
+    test rsp, 8
+    jz .double_fault_dispatch_aligned
+
+    sub rsp, 8
+
+.double_fault_dispatch_aligned:
     call double_fault_dispatch
 
 

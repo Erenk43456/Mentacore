@@ -26,6 +26,11 @@ pub fn run(runner: &mut TestRunner) {
         b"interrupts::lapic_timer_stack_alignment",
         test_lapic_timer_stack_alignment,
     );
+
+    runner.run(
+        b"interrupts::double_fault_ist1",
+        test_double_fault_ist1,
+    );
 }
 
 pub fn record_timer_dispatch_rsp(rsp: u64) {
@@ -209,4 +214,8 @@ fn test_lapic_timer_stack_alignment() -> bool {
     // RSP must be 16-byte aligned immediately
     // before the CALL instruction.
     alignment == 0
+}
+
+fn test_double_fault_ist1() -> bool {
+    crate::interrupts::trigger_double_fault_test()
 }

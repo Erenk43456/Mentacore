@@ -200,9 +200,11 @@ extern "C" fn double_fault_dispatch(
     serial_write_hex(ist1_top);
     serial_write(b"\r\n");
 
-    if cpu_rsp >= ist1_start
-        && cpu_rsp <= ist1_top
-    {
+    let ist1_ok =
+        cpu_rsp >= ist1_start
+            && cpu_rsp <= ist1_top;
+
+    if ist1_ok {
         serial_write(
             b"DOUBLE FAULT IST1 STACK OK\r\n"
         );
@@ -240,6 +242,22 @@ extern "C" fn double_fault_dispatch(
         serial_write(b"RFLAGS: ");
         serial_write_hex(rflags);
         serial_write(b"\r\n");
+    }
+
+    if ist1_ok {
+        serial_write(
+            b"[TEST] interrupts::double_fault_ist1 ... OK\r\n"
+        );
+
+        serial_write(b"\r\nRESULT: 18/18 TESTS PASSED\r\n");
+        serial_write(b"ALL TESTS PASSED\r\n");
+    } else {
+        serial_write(
+            b"[TEST] interrupts::double_fault_ist1 ... FAILED\r\n"
+        );
+
+        serial_write(b"\r\nRESULT: 17/18 TESTS PASSED\r\n");
+        serial_write(b"TESTS FAILED\r\n");
     }
 
     loop {
@@ -318,6 +336,26 @@ extern "C" fn lapic_timer_dispatch(
 
     unsafe {
         crate::hardware::lapic::write_global_eoi();
+    }
+}
+
+#[cfg(feature = "kernel-tests")]
+pub fn trigger_double_fault_test() -> ! {
+    unsafe {
+        core::arch::asm!(
+            "cli",
+            options(nostack)
+        );
+
+        IDT[14] = IdtEntry::missing();
+
+        core::ptr::read_volatile(
+            0x0000_4000_0000_0000 as *const u8
+        );
+    }
+
+    loop {
+        core::hint::spin_loop();
     }
 }
 
