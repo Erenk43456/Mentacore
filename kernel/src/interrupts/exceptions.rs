@@ -1,223 +1,30 @@
 use core::arch::asm;
+
+#[cfg(feature = "kernel-tests")]
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::sync::Spinlock;
 use crate::memory::physical::PhysicalFrameAllocator;
+use crate::sync::Spinlock;
 
-const COM1: u16 = 0x3F8;
+#[cfg(feature = "kernel-tests")]
+use super::idt;
 
-unsafe fn serial_write_byte(byte: u8) {
-    unsafe {
-        asm!(
-            "out dx, al",
-            in("dx") COM1,
-            in("al") byte,
-            options(nostack, preserves_flags)
-        );
-    }
-}
-
-fn serial_write(message: &[u8]) {
-    for &byte in message {
-        unsafe {
-            serial_write_byte(byte);
-        }
-    }
-}
-
-fn serial_write_hex(value: u64) {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-
-    serial_write(b"0x");
-
-    for i in (0..16).rev() {
-        let digit =
-            ((value >> (i * 4)) & 0xF) as usize;
-
-        unsafe {
-            serial_write_byte(HEX[digit]);
-        }
-    }
-}
-
-#[repr(C, packed)]
-struct IdtEntry {
-    offset_low: u16,
-    selector: u16,
-    options: u16,
-    offset_mid: u16,
-    offset_high: u32,
-    reserved: u32,
-}
-
-impl IdtEntry {
-    const fn missing() -> Self {
-        Self {
-            offset_low: 0,
-            selector: 0,
-            options: 0,
-            offset_mid: 0,
-            offset_high: 0,
-            reserved: 0,
-        }
-    }
-
-    fn set_handler(
-        &mut self,
-        handler: unsafe extern "C" fn() -> !,
-        selector: u16,
-        ist: u8,
-    ) {
-        let address = handler as u64;
-
-        self.offset_low = address as u16;
-
-        self.selector = selector;
-
-        // Present + interrupt gate + IST index.
-        self.options = 0x8E00 | ((ist & 0x07) as u16);
-
-        self.offset_mid = (address >> 16) as u16;
-
-        self.offset_high = (address >> 32) as u32;
-
-        self.reserved = 0;
-    }
-}
-
-#[repr(C, packed)]
-struct IdtPointer {
-    limit: u16,
-    base: u64,
-}
-
-const REGISTER_FRAME_SIZE: usize =
-    9 * core::mem::size_of::<u64>();
-
-#[repr(C)]
-pub struct TrapFrame {
-    pub r11: u64,
-    pub r10: u64,
-    pub r9: u64,
-    pub r8: u64,
-    pub rdi: u64,
-    pub rsi: u64,
-    pub rdx: u64,
-    pub rcx: u64,
-    pub rax: u64,
-
-    pub error_code: u64,
-    pub rip: u64,
-    pub cs: u64,
-    pub rflags: u64,
-}
-
-const _: () = assert!(
-    core::mem::size_of::<TrapFrame>()
-        == 13 * core::mem::size_of::<u64>()
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, r11)
-        == 0
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, r10)
-        == 8
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, r9)
-        == 16
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, r8)
-        == 24
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, rdi)
-        == 32
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, rsi)
-        == 40
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, rdx)
-        == 48
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, rcx)
-        == 56
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, rax)
-        == 64
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, error_code)
-        == 72
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, rip)
-        == 80
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, cs)
-        == 88
-);
-
-const _: () = assert!(
-    core::mem::offset_of!(TrapFrame, rflags)
-        == 96
-);
-
-static mut IDT: [IdtEntry; 256] =
-    [const { IdtEntry::missing() }; 256];
+use super::serial::{serial_write, serial_write_hex};
+use super::TrapFrame;
 
 static FRAME_ALLOCATOR: Spinlock<Option<PhysicalFrameAllocator>> =
     Spinlock::new(None);
-
-static TIMER_TICKS: AtomicU64 =
-    AtomicU64::new(0);
 
 #[cfg(feature = "kernel-tests")]
 static NESTED_EXCEPTION_TEST_ARMED: AtomicU64 =
     AtomicU64::new(0);
 
-pub fn timer_ticks() -> u64 {
-    TIMER_TICKS.load(Ordering::Relaxed)
-}
+pub(crate) fn set_frame_allocator(
+    allocator: PhysicalFrameAllocator,
+) {
+    let mut guard = FRAME_ALLOCATOR.lock_irqsave();
 
-pub const LAPIC_TIMER_VECTOR: u8 = 0x40;
-
-#[cfg(feature = "kernel-tests")]
-static LAPIC_TIMER_TICKS: AtomicU64 =
-    AtomicU64::new(0);
-
-#[cfg(feature = "kernel-tests")]
-pub fn lapic_timer_ticks() -> u64 {
-    LAPIC_TIMER_TICKS.load(Ordering::Relaxed)
-}
-
-unsafe extern "C" {
-    fn divide_error_entry() -> !;
-    fn invalid_opcode_entry() -> !;
-    fn double_fault_entry() -> !;
-    fn general_protection_entry() -> !;
-    fn page_fault_entry() -> !;
-    fn timer_irq_entry() -> !;
-    fn lapic_timer_entry() -> !;
+    *guard = Some(allocator);
 }
 
 #[unsafe(no_mangle)]
@@ -231,7 +38,7 @@ extern "C" fn divide_error_dispatch(
 
     unsafe {
         let instruction_pointer =
-            unsafe { (*trap_frame).rip };
+            (*trap_frame).rip;
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
@@ -254,7 +61,7 @@ extern "C" fn invalid_opcode_dispatch(
 
     unsafe {
         let instruction_pointer =
-            unsafe { (*trap_frame).rip };
+            (*trap_frame).rip;
 
         serial_write(b"Instruction pointer: ");
         serial_write_hex(instruction_pointer);
@@ -305,21 +112,21 @@ extern "C" fn double_fault_dispatch(
     #[cfg(feature = "kernel-tests")]
     if nested_exception_armed {
         serial_write(
-            b"NESTED EXCEPTION PATH ARMED\r\n"
+            b"NESTED EXCEPTION PATH ARMED\r\n",
         );
     } else {
         serial_write(
-            b"NESTED EXCEPTION PATH FAILED\r\n"
+            b"NESTED EXCEPTION PATH FAILED\r\n",
         );
     }
 
     if ist1_ok {
         serial_write(
-            b"DOUBLE FAULT IST1 STACK OK\r\n"
+            b"DOUBLE FAULT IST1 STACK OK\r\n",
         );
     } else {
         serial_write(
-            b"DOUBLE FAULT IST1 STACK FAILED\r\n"
+            b"DOUBLE FAULT IST1 STACK FAILED\r\n",
         );
     }
 
@@ -357,7 +164,7 @@ extern "C" fn double_fault_dispatch(
             let passed = passed + 1;
 
             serial_write(
-                b"[TEST] interrupts::double_fault_ist1 ... OK\r\n"
+                b"[TEST] interrupts::double_fault_ist1 ... OK\r\n",
             );
 
             serial_write(b"\r\nRESULT: ");
@@ -376,7 +183,7 @@ extern "C" fn double_fault_dispatch(
                 crate::tests::framework::result();
 
             serial_write(
-                b"[TEST] interrupts::double_fault_ist1 ... FAILED\r\n"
+                b"[TEST] interrupts::double_fault_ist1 ... FAILED\r\n",
             );
 
             serial_write(b"\r\nRESULT: ");
@@ -420,52 +227,6 @@ extern "C" fn general_protection_dispatch(
     }
 }
 
-#[unsafe(no_mangle)]
-extern "C" fn timer_irq_dispatch(
-    dispatch_rsp: u64,
-) {
-    #[cfg(feature = "kernel-tests")]
-    crate::tests::interrupts::record_timer_dispatch_rsp(
-        dispatch_rsp,
-    );
-
-    #[cfg(not(feature = "kernel-tests"))]
-    let _ = dispatch_rsp;
-
-    TIMER_TICKS.fetch_add(
-        1,
-        Ordering::Relaxed,
-    );
-
-    unsafe {
-        crate::hardware::pic::send_eoi(0);
-    }
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn lapic_timer_dispatch(
-    dispatch_rsp: u64,
-) {
-    #[cfg(feature = "kernel-tests")]
-    {
-        crate::tests::interrupts::record_lapic_timer_dispatch_rsp(
-            dispatch_rsp,
-        );
-
-        LAPIC_TIMER_TICKS.fetch_add(
-            1,
-            Ordering::Relaxed,
-        );
-    }
-
-    #[cfg(not(feature = "kernel-tests"))]
-    let _ = dispatch_rsp;
-
-    unsafe {
-        crate::hardware::lapic::write_global_eoi();
-    }
-}
-
 #[cfg(feature = "kernel-tests")]
 pub fn trigger_double_fault_test() -> ! {
     NESTED_EXCEPTION_TEST_ARMED.store(
@@ -479,10 +240,12 @@ pub fn trigger_double_fault_test() -> ! {
             options(nostack)
         );
 
-        IDT[14] = IdtEntry::missing();
+        idt::clear_handler(
+            idt::PAGE_FAULT_VECTOR,
+        );
 
         core::ptr::read_volatile(
-            0x0000_5000_0000_0000 as *const u8
+            0x0000_5000_0000_0000 as *const u8,
         );
     }
 
@@ -554,14 +317,17 @@ extern "C" fn page_fault_dispatch(
     serial_write(b"Page fault handler reached.\r\n");
 
     let page_address =
-        fault_address & !(crate::memory::paging::PAGE_SIZE - 1);
+        fault_address
+            & !(crate::memory::paging::PAGE_SIZE - 1);
 
     if page_address < crate::memory::heap::HEAP_START
         || page_address
             >= crate::memory::heap::HEAP_START
                 + crate::memory::heap::HEAP_SIZE
     {
-        serial_write(b"Page fault outside kernel heap.\r\n");
+        serial_write(
+            b"Page fault outside kernel heap.\r\n",
+        );
 
         loop {
             core::hint::spin_loop();
@@ -577,7 +343,7 @@ extern "C" fn page_fault_dispatch(
 
             None => {
                 serial_write(
-                    b"Physical frame allocator unavailable.\r\n"
+                    b"Physical frame allocator unavailable.\r\n",
                 );
 
                 loop {
@@ -590,7 +356,9 @@ extern "C" fn page_fault_dispatch(
         Some(frame) => frame,
 
         None => {
-            serial_write(b"Out of physical memory.\r\n");
+            serial_write(
+                b"Out of physical memory.\r\n",
+            );
 
             loop {
                 core::hint::spin_loop();
@@ -620,13 +388,18 @@ extern "C" fn page_fault_dispatch(
         )
     } {
         Ok(()) => {
-            serial_write(b"Page mapped successfully.\r\n");
+            serial_write(
+                b"Page mapped successfully.\r\n",
+            );
 
             unsafe {
                 core::arch::asm!(
                     "invlpg [{}]",
                     in(reg) page_address,
-                    options(nostack, preserves_flags)
+                    options(
+                        nostack,
+                        preserves_flags
+                    )
                 );
             }
 
@@ -634,87 +407,13 @@ extern "C" fn page_fault_dispatch(
         }
 
         Err(()) => {
-            serial_write(b"Page mapping failed.\r\n");
+            serial_write(
+                b"Page mapping failed.\r\n",
+            );
 
             loop {
                 core::hint::spin_loop();
             }
         }
-    }
-}
-
-pub unsafe fn init(
-    allocator: PhysicalFrameAllocator,
-) {
-    {
-        let mut guard =
-            FRAME_ALLOCATOR.lock_irqsave();
-
-        *guard = Some(allocator);
-    }
-
-    unsafe {
-        let code_segment: u16;
-
-        asm!(
-            "mov {0:x}, cs",
-            out(reg) code_segment,
-            options(nostack, preserves_flags)
-        );
-
-        IDT[0].set_handler(
-            divide_error_entry,
-            code_segment,
-            0,
-        );
-
-        IDT[6].set_handler(
-            invalid_opcode_entry,
-            code_segment,
-            0,
-        );
-
-        IDT[8].set_handler(
-            double_fault_entry,
-            code_segment,
-            1,
-        );
-
-        IDT[13].set_handler(
-            general_protection_entry,
-            code_segment,
-            0,
-        );
-
-        IDT[14].set_handler(
-            page_fault_entry,
-            code_segment,
-            0,
-        );
-
-        IDT[32].set_handler(
-            timer_irq_entry,
-            code_segment,
-            0,
-        );
-
-        IDT[LAPIC_TIMER_VECTOR as usize].set_handler(
-            lapic_timer_entry,
-            code_segment,
-            0,
-        );
-
-        let idt_pointer = IdtPointer {
-            limit:
-                (core::mem::size_of::<IdtEntry>() * 256 - 1)
-                    as u16,
-            base: core::ptr::addr_of!(IDT) as u64,
-        };
-
-        asm!(
-            "lidt [{}]",
-            in(reg) &idt_pointer,
-            options(readonly, nostack, preserves_flags)
-        );
     }
 }
