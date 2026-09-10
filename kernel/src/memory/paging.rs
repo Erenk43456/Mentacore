@@ -11,6 +11,7 @@ const PRESENT: u64 = 1 << 0;
 const WRITABLE: u64 = 1 << 1;
 const PCD: u64 = 1 << 4;
 const HUGE_PAGE: u64 = 1 << 7;
+const USER: u64 = 1 << 2;
 
 const IDENTITY_MAP_SIZE: u64 = 0x1_0000_0000;
 
@@ -18,6 +19,7 @@ const IDENTITY_MAP_SIZE: u64 = 0x1_0000_0000;
 pub struct PageFlags {
     pub writable: bool,
     pub cache_disable: bool,
+    pub user: bool,
 }
 
 fn flags_to_entry(flags: PageFlags) -> u64 {
@@ -29,6 +31,10 @@ fn flags_to_entry(flags: PageFlags) -> u64 {
 
     if flags.cache_disable {
         entry |= PCD;
+    }
+
+    if flags.user {
+        entry |= USER;
     }
 
     entry
@@ -45,6 +51,76 @@ impl PageTable {
             *entry = 0;
         }
     }
+}
+
+#[cfg(feature = "kernel-tests")]
+pub unsafe fn test_entry(
+    pml4: *mut PageTable,
+    virtual_address: u64,
+) -> Option<[u64; 4]> {
+    if !is_canonical_address(virtual_address) {
+        return None;
+    }
+
+    let pml4_index =
+        ((virtual_address >> 39) & 0x1ff) as usize;
+
+    let pdpt_index =
+        ((virtual_address >> 30) & 0x1ff) as usize;
+
+    let pd_index =
+        ((virtual_address >> 21) & 0x1ff) as usize;
+
+    let pt_index =
+        ((virtual_address >> 12) & 0x1ff) as usize;
+
+    let pml4_entry = (*pml4).entries[pml4_index];
+
+    if pml4_entry & PRESENT == 0 {
+        return None;
+    }
+
+    let pdpt =
+        (pml4_entry & 0x000f_ffff_ffff_f000)
+            as *mut PageTable;
+
+    let pdpt_entry = (*pdpt).entries[pdpt_index];
+
+    if pdpt_entry & PRESENT == 0 {
+        return None;
+    }
+
+    let pd =
+        (pdpt_entry & 0x000f_ffff_ffff_f000)
+            as *mut PageTable;
+
+    let pd_entry = (*pd).entries[pd_index];
+
+    if pd_entry & PRESENT == 0 {
+        return None;
+    }
+
+    if pd_entry & HUGE_PAGE != 0 {
+        return Some([
+            pml4_entry,
+            pdpt_entry,
+            pd_entry,
+            0,
+        ]);
+    }
+
+    let pt =
+        (pd_entry & 0x000f_ffff_ffff_f000)
+            as *mut PageTable;
+
+    let pte = (*pt).entries[pt_index];
+
+    Some([
+        pml4_entry,
+        pdpt_entry,
+        pd_entry,
+        pte,
+    ])
 }
 
 pub unsafe fn init(
@@ -119,6 +195,7 @@ pub unsafe fn init(
             PageFlags {
                 writable: true,
                 cache_disable: false,
+                user: false,
             },
         ).is_ok() {
             return Err(());
@@ -136,6 +213,7 @@ pub unsafe fn init(
             PageFlags {
                 writable: true,
                 cache_disable: false,
+                user: false,
             },
         ).is_ok() {
             return Err(());
@@ -159,6 +237,7 @@ pub unsafe fn init(
             PageFlags {
                 writable: true,
                 cache_disable: false,
+                user: false,
             },
         )?;
     }
@@ -200,6 +279,7 @@ pub unsafe fn init(
             PageFlags {
                 writable: true,
                 cache_disable: false,
+                user: false,
             },
         )?;
     }
@@ -323,6 +403,10 @@ fn is_valid_physical_address(address: u64) -> bool {
     (address >> 52) == 0
 }
 
+fn is_user_address(address: u64) -> bool {
+    address < 0x0000_8000_0000_0000
+}
+
 pub unsafe fn map_page(
     pml4: *mut PageTable,
     allocator: &mut PhysicalFrameAllocator,
@@ -346,6 +430,10 @@ pub unsafe fn map_page(
         return Err(());
     }
 
+    if flags.user && !is_user_address(virtual_address) {
+        return Err(());
+    }
+
     let pml4_index =
         ((virtual_address >> 39) & 0x1ff) as usize;
 
@@ -362,9 +450,16 @@ pub unsafe fn map_page(
     let pdpt = if unsafe {
         (*pml4).entries[pml4_index] & PRESENT
     } != 0 {
-        (unsafe {
+        let entry = unsafe {
             (*pml4).entries[pml4_index]
-        } & 0x000f_ffff_ffff_f000) as *mut PageTable
+        };
+
+        if flags.user && entry & USER == 0 {
+            return Err(());
+        }
+
+        (entry & 0x000f_ffff_ffff_f000)
+            as *mut PageTable
     } else {
         let frame =
             allocator.allocate_frame().ok_or(())?;
@@ -375,10 +470,16 @@ pub unsafe fn map_page(
         unsafe {
             (*table).zero();
 
-            (*pml4).entries[pml4_index] =
+            let mut entry =
                 frame.start_address
                 | PRESENT
                 | WRITABLE;
+
+            if flags.user {
+                entry |= USER;
+            }
+
+            (*pml4).entries[pml4_index] = entry;
         }
 
         table
@@ -388,9 +489,16 @@ pub unsafe fn map_page(
     let pd = if unsafe {
         (*pdpt).entries[pdpt_index] & PRESENT
     } != 0 {
-        (unsafe {
+        let entry = unsafe {
             (*pdpt).entries[pdpt_index]
-        } & 0x000f_ffff_ffff_f000) as *mut PageTable
+        };
+
+        if flags.user && entry & USER == 0 {
+            return Err(());
+        }
+
+        (entry & 0x000f_ffff_ffff_f000)
+            as *mut PageTable
     } else {
         let frame =
             allocator.allocate_frame().ok_or(())?;
@@ -401,10 +509,16 @@ pub unsafe fn map_page(
         unsafe {
             (*table).zero();
 
-            (*pdpt).entries[pdpt_index] =
+            let mut entry =
                 frame.start_address
                 | PRESENT
                 | WRITABLE;
+
+            if flags.user {
+                entry |= USER;
+            }
+
+            (*pdpt).entries[pdpt_index] = entry;
         }
 
         table
@@ -420,6 +534,10 @@ pub unsafe fn map_page(
             return Err(());
         }
 
+        if flags.user && pd_entry & USER == 0 {
+            return Err(());
+        }
+
         (pd_entry & 0x000f_ffff_ffff_f000)
             as *mut PageTable
     } else {
@@ -432,10 +550,16 @@ pub unsafe fn map_page(
         unsafe {
             (*table).zero();
 
-            (*pd).entries[pd_index] =
+            let mut entry =
                 frame.start_address
                 | PRESENT
                 | WRITABLE;
+
+            if flags.user {
+                entry |= USER;
+            }
+
+            (*pd).entries[pd_index] = entry;
         }
 
         table

@@ -476,7 +476,7 @@ pub fn trigger_double_fault_test() -> ! {
         IDT[14] = IdtEntry::missing();
 
         core::ptr::read_volatile(
-            0x0000_4000_0000_0000 as *const u8
+            0x0000_5000_0000_0000 as *const u8
         );
     }
 
@@ -620,6 +620,7 @@ extern "C" fn page_fault_dispatch(
             crate::memory::paging::PageFlags {
                 writable: true,
                 cache_disable: false,
+                user: false,
             },
         )
     } {

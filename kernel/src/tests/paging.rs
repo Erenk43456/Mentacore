@@ -26,6 +26,11 @@ pub fn run(
         b"paging::unmap_rejection",
         || test_unmap_rejection(allocator),
     );
+
+    runner.run(
+        b"paging::user_mapping_permissions",
+        || test_user_mapping_permissions(allocator),
+    );
 }
 
 fn test_duplicate_mapping(
@@ -65,6 +70,7 @@ fn test_duplicate_mapping(
                 memory::paging::PageFlags {
                     writable: true,
                     cache_disable: false,
+                    user: false,
                 },
             )
             .is_err()
@@ -89,6 +95,7 @@ fn test_duplicate_mapping(
                 memory::paging::PageFlags {
                     writable: true,
                     cache_disable: false,
+                    user: false,
                 },
             )
             .is_ok()
@@ -136,6 +143,7 @@ fn test_mapping(
                 memory::paging::PageFlags {
                     writable: true,
                     cache_disable: false,
+                    user: false,
                 },
             )
             .is_err()
@@ -207,6 +215,7 @@ fn test_unmap(
                 memory::paging::PageFlags {
                     writable: true,
                     cache_disable: false,
+                    user: false,
                 },
             )
             .is_err()
@@ -298,6 +307,7 @@ fn test_unmap(
                 memory::paging::PageFlags {
                     writable: true,
                     cache_disable: false,
+                    user: false,
                 },
             )
             .is_err()
@@ -378,6 +388,179 @@ fn test_unmap_rejection(
     unsafe {
         if mapper
             .unmap(huge_page_virtual)
+            .is_ok()
+        {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn test_user_mapping_permissions(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let user_virtual =
+        0x0000_4000_0000_0000;
+
+    let user_frame =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => return false,
+        };
+
+    let pml4 =
+        unsafe {
+            memory::paging::current_pml4()
+        };
+
+    let mut mapper =
+        unsafe {
+            memory::paging::Mapper::new(pml4)
+        };
+
+    unsafe {
+        if mapper
+            .map(
+                allocator,
+                user_virtual,
+                user_frame.start_address,
+                memory::paging::PageFlags {
+                    writable: true,
+                    cache_disable: false,
+                    user: true,
+                },
+            )
+            .is_err()
+        {
+            return false;
+        }
+    }
+
+    let entries =
+        unsafe {
+            match memory::paging::test_entry(
+                pml4,
+                user_virtual,
+            ) {
+                Some(entries) => entries,
+                None => return false,
+            }
+        };
+
+    let user_bit = 1u64 << 2;
+
+    // PML4 -> PDPT -> PD -> PT/PTE
+    if entries[0] & user_bit == 0 {
+        return false;
+    }
+
+    if entries[1] & user_bit == 0 {
+        return false;
+    }
+
+    if entries[2] & user_bit == 0 {
+        return false;
+    }
+
+    if entries[3] & user_bit == 0 {
+        return false;
+    }
+
+    // Kernel mapping must remain supervisor-only.
+    let kernel_virtual =
+        0xFFFF_9000_0000_7000;
+
+    let kernel_frame =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => return false,
+        };
+
+    unsafe {
+        if mapper
+            .map(
+                allocator,
+                kernel_virtual,
+                kernel_frame.start_address,
+                memory::paging::PageFlags {
+                    writable: true,
+                    cache_disable: false,
+                    user: false,
+                },
+            )
+            .is_err()
+        {
+            return false;
+        }
+    }
+
+    let kernel_entries =
+        unsafe {
+            match memory::paging::test_entry(
+                pml4,
+                kernel_virtual,
+            ) {
+                Some(entries) => entries,
+                None => return false,
+            }
+        };
+
+    if kernel_entries[3] & user_bit != 0 {
+        return false;
+    }
+
+    // USER mappings must not enter the high-half.
+    let high_user_virtual =
+        0xFFFF_9000_0000_8000;
+
+    let high_user_frame =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => return false,
+        };
+
+    unsafe {
+        if mapper
+            .map(
+                allocator,
+                high_user_virtual,
+                high_user_frame.start_address,
+                memory::paging::PageFlags {
+                    writable: true,
+                    cache_disable: false,
+                    user: true,
+                },
+            )
+            .is_ok()
+        {
+            return false;
+        }
+    }
+
+    // USER mappings must not reuse the existing
+    // supervisor-only identity-map hierarchy.
+    let identity_user_virtual =
+        0x0000_0000_0040_0000;
+
+    let identity_user_frame =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => return false,
+        };
+
+    unsafe {
+        if mapper
+            .map(
+                allocator,
+                identity_user_virtual,
+                identity_user_frame.start_address,
+                memory::paging::PageFlags {
+                    writable: true,
+                    cache_disable: false,
+                    user: true,
+                },
+            )
             .is_ok()
         {
             return false;

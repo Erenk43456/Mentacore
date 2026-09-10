@@ -42,6 +42,7 @@ pub unsafe fn initialize(
             memory::paging::PageFlags {
                 writable: true,
                 cache_disable: true,
+                user: false,
             },
         ) {
             Ok(()) => {}
