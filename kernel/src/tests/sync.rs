@@ -18,12 +18,21 @@ pub fn run(runner: &mut TestRunner) {
 fn test_spinlock() -> bool {
     let lock = Spinlock::new(0u64);
 
+    // Normal lock acquisition must not alter interrupt state.
+    if !cpu::interrupts_enabled() {
+        return false;
+    }
+
     if lock.is_locked() {
         return false;
     }
 
     {
         let mut guard = lock.lock();
+
+        if !cpu::interrupts_enabled() {
+            return false;
+        }
 
         if !lock.is_locked() {
             return false;
@@ -32,19 +41,48 @@ fn test_spinlock() -> bool {
         *guard = 0x1234_5678;
     }
 
+    // Guard drop must release the lock and preserve interrupts.
     if lock.is_locked() {
         return false;
     }
 
+    if !cpu::interrupts_enabled() {
+        return false;
+    }
+
+    // Lock must be reusable and protected data must persist.
     {
-        let guard = lock.lock();
+        let mut guard = lock.lock();
+
+        if !cpu::interrupts_enabled() {
+            return false;
+        }
 
         if *guard != 0x1234_5678 {
             return false;
         }
+
+        *guard = 0xCAFE_BABE;
     }
 
-    true
+    if lock.is_locked() {
+        return false;
+    }
+
+    if !cpu::interrupts_enabled() {
+        return false;
+    }
+
+    // Final acquisition verifies the updated value survived another cycle.
+    {
+        let guard = lock.lock();
+
+        if *guard != 0xCAFE_BABE {
+            return false;
+        }
+    }
+
+    !lock.is_locked()
 }
 
 fn test_spinlock_irqsave() -> bool {
