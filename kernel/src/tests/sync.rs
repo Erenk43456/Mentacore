@@ -100,21 +100,45 @@ fn test_spinlock_irqsave() -> bool {
             return false;
         }
 
+        if !lock.is_locked() {
+            return false;
+        }
+
         *guard = 0xDEAD_BEEF;
     }
 
-    // Original interrupt state must be restored.
+    // Guard drop must release the lock and restore interrupts.
+    if lock.is_locked() {
+        return false;
+    }
+
     if !cpu::interrupts_enabled() {
         return false;
     }
 
-    // 2. Protected data must survive unlock.
+    // 2. Protected data must survive unlock and the lock must be reusable.
     {
         let guard = lock.lock_irqsave();
+
+        if cpu::interrupts_enabled() {
+            return false;
+        }
+
+        if !lock.is_locked() {
+            return false;
+        }
 
         if *guard != 0xDEAD_BEEF {
             return false;
         }
+    }
+
+    if lock.is_locked() {
+        return false;
+    }
+
+    if !cpu::interrupts_enabled() {
+        return false;
     }
 
     // 3. Acquire while interrupts are already disabled.
@@ -133,10 +157,21 @@ fn test_spinlock_irqsave() -> bool {
             return false;
         }
 
+        if !lock.is_locked() {
+            disabled_state.restore();
+            return false;
+        }
+
         *guard = 0xCAFE_BABE;
     }
 
-    // lock_irqsave() must preserve the disabled state.
+    // lock_irqsave() must release the lock while preserving
+    // the previously disabled interrupt state.
+    if lock.is_locked() {
+        disabled_state.restore();
+        return false;
+    }
+
     if cpu::interrupts_enabled() {
         disabled_state.restore();
         return false;
@@ -148,5 +183,18 @@ fn test_spinlock_irqsave() -> bool {
         return false;
     }
 
-    true
+    // 4. Final acquisition verifies the updated value survived.
+    {
+        let guard = lock.lock_irqsave();
+
+        if cpu::interrupts_enabled() {
+            return false;
+        }
+
+        if *guard != 0xCAFE_BABE {
+            return false;
+        }
+    }
+
+    !lock.is_locked() && cpu::interrupts_enabled()
 }
