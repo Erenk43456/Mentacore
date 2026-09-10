@@ -11,7 +11,10 @@ static TIMER_DISPATCH_RSP: AtomicU64 =
 static LAPIC_TIMER_DISPATCH_RSP: AtomicU64 =
     AtomicU64::new(0);
 
-pub fn run(runner: &mut TestRunner) {
+pub fn run(
+    runner: &mut TestRunner,
+    lapic: &crate::hardware::lapic::Lapic,
+) {
     runner.run(
         b"interrupts::state",
         test_interrupt_state,
@@ -24,7 +27,7 @@ pub fn run(runner: &mut TestRunner) {
 
     runner.run(
         b"interrupts::lapic_timer_stack_alignment",
-        test_lapic_timer_stack_alignment,
+        || test_lapic_timer_stack_alignment(lapic),
     );
 
     runner.run(
@@ -168,7 +171,16 @@ fn test_timer_stack_alignment() -> bool {
     alignment == 0
 }
 
-fn test_lapic_timer_stack_alignment() -> bool {
+fn test_lapic_timer_stack_alignment(
+    lapic: &crate::hardware::lapic::Lapic,
+) -> bool {
+    unsafe {
+        lapic.arm_timer_oneshot(
+            crate::interrupts::LAPIC_TIMER_VECTOR,
+            100_000_000,
+        );
+    }
+
     LAPIC_TIMER_DISPATCH_RSP.store(
         0,
         Ordering::Relaxed,

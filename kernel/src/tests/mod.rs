@@ -1,4 +1,4 @@
-mod framework;
+pub mod framework;
 mod physical;
 mod paging;
 mod heap;
@@ -52,8 +52,14 @@ impl KernelTestRunner {
         tsc::run(&mut self.runner);
     }
 
-    pub fn run_interrupts(&mut self) {
-        interrupts::run(&mut self.runner);
+    pub fn run_interrupts(
+        &mut self,
+        lapic: &crate::hardware::lapic::Lapic,
+    ) {
+        interrupts::run(
+            &mut self.runner,
+            lapic,
+        );
     }
 
     pub fn finish(&self) {

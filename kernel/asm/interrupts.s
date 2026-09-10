@@ -280,9 +280,25 @@ lapic_timer_entry:
     push r10
     push r11
 
+    ; SysV x86-64 ABI:
+    ;   call-site RSP % 16 == 0
+
+    test rsp, 8
+    jz .lapic_timer_dispatch_aligned
+
+    sub rsp, 8
+
     mov rdi, rsp
     call lapic_timer_dispatch
 
+    add rsp, 8
+    jmp .lapic_timer_dispatch_done
+
+.lapic_timer_dispatch_aligned:
+    mov rdi, rsp
+    call lapic_timer_dispatch
+
+.lapic_timer_dispatch_done:
     pop r11
     pop r10
     pop r9

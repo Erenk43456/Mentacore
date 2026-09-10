@@ -189,6 +189,31 @@ impl Lapic {
         }
     }
 
+    pub unsafe fn arm_timer_oneshot(
+        &self,
+        vector: u8,
+        initial_count: u32,
+    ) {
+        unsafe {
+            self.set_lvt_timer(
+                LAPIC_LVT_MASKED
+                    | vector as u32,
+            );
+
+            self.set_timer_divide(
+                0x0000_000B
+            );
+
+            self.set_timer_initial_count(
+                initial_count
+            );
+
+            self.set_lvt_timer(
+                vector as u32
+            );
+        }
+    }
+
     pub unsafe fn timer_current_count(
         &self,
     ) -> u32 {

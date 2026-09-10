@@ -241,20 +241,45 @@ extern "C" fn double_fault_dispatch(
         serial_write(b"\r\n");
     }
 
-    if ist1_ok {
-        serial_write(
-            b"[TEST] interrupts::double_fault_ist1 ... OK\r\n"
-        );
+    #[cfg(feature = "kernel-tests")]
+    {
+        if ist1_ok {
+            let (passed, total) =
+                crate::tests::framework::result();
 
-        serial_write(b"\r\nRESULT: 18/18 TESTS PASSED\r\n");
-        serial_write(b"ALL TESTS PASSED\r\n");
-    } else {
-        serial_write(
-            b"[TEST] interrupts::double_fault_ist1 ... FAILED\r\n"
-        );
+            let passed = passed + 1;
 
-        serial_write(b"\r\nRESULT: 17/18 TESTS PASSED\r\n");
-        serial_write(b"TESTS FAILED\r\n");
+            serial_write(
+                b"[TEST] interrupts::double_fault_ist1 ... OK\r\n"
+            );
+
+            serial_write(b"\r\nRESULT: ");
+            crate::tests::framework::write_usize(passed);
+            serial_write(b"/");
+            crate::tests::framework::write_usize(total);
+            serial_write(b" TESTS PASSED\r\n");
+
+            if passed == total {
+                serial_write(b"ALL TESTS PASSED\r\n");
+            } else {
+                serial_write(b"TESTS FAILED\r\n");
+            }
+        } else {
+            let (passed, total) =
+                crate::tests::framework::result();
+
+            serial_write(
+                b"[TEST] interrupts::double_fault_ist1 ... FAILED\r\n"
+            );
+
+            serial_write(b"\r\nRESULT: ");
+            crate::tests::framework::write_usize(passed);
+            serial_write(b"/");
+            crate::tests::framework::write_usize(total);
+            serial_write(b" TESTS PASSED\r\n");
+
+            serial_write(b"TESTS FAILED\r\n");
+        }
     }
 
     loop {

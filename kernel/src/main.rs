@@ -150,28 +150,9 @@ pub extern "C" fn _start(
     // ---------------------------------------------------------
 
     unsafe {
-        // Keep the timer masked while programming it.
-        lapic.set_lvt_timer(
-            hardware::lapic::LAPIC_LVT_MASKED
-                | interrupts::LAPIC_TIMER_VECTOR
-                    as u32,
-        );
-
-        // Divide-by-1.
-        lapic.set_timer_divide(
-            0x0000_000B
-        );
-
-        // Give ourselves plenty of time before
-        // the interrupt fires.
-        lapic.set_timer_initial_count(
-            100_000_000
-        );
-
-        // Vector 0x40, one-shot mode, unmasked.
-        lapic.set_lvt_timer(
-            interrupts::LAPIC_TIMER_VECTOR
-                as u32,
+        lapic.arm_timer_oneshot(
+            interrupts::LAPIC_TIMER_VECTOR,
+            100_000_000,
         );
     }
 
@@ -194,9 +175,9 @@ pub extern "C" fn _start(
     #[cfg(feature = "kernel-tests")]
     {
         test_runner.run_heap();
-        test_runner.run_interrupts();
         test_runner.run_sync();
         test_runner.run_tsc();
+        test_runner.run_interrupts(&lapic);
         test_runner.finish();
     }
 

@@ -1,5 +1,16 @@
 use crate::debug;
 
+use core::sync::atomic::{
+    AtomicUsize,
+    Ordering,
+};
+
+static PASSED: AtomicUsize =
+    AtomicUsize::new(0);
+
+static TOTAL: AtomicUsize =
+    AtomicUsize::new(0);
+
 pub struct TestRunner {
     passed: usize,
     total: usize,
@@ -20,12 +31,23 @@ impl TestRunner {
     ) {
         self.total += 1;
 
+        TOTAL.store(
+            self.total,
+            Ordering::Relaxed,
+        );
+
         debug::write(b"[TEST] ");
         debug::write(name);
         debug::write(b" ... ");
 
         if test() {
             self.passed += 1;
+
+            PASSED.store(
+                self.passed,
+                Ordering::Relaxed,
+            );
+
             debug::write(b"OK\r\n");
         } else {
             debug::write(b"FAILED\r\n");
@@ -47,6 +69,13 @@ impl TestRunner {
     }
 }
 
+pub fn result() -> (usize, usize) {
+    (
+        PASSED.load(Ordering::Relaxed),
+        TOTAL.load(Ordering::Relaxed),
+    )
+}
+
 pub fn write_header() {
     debug::write(
         b"\r\n================================\r\n",
@@ -59,7 +88,7 @@ pub fn write_header() {
     );
 }
 
-fn write_usize(value: usize) {
+pub fn write_usize(value: usize) {
     if value == 0 {
         debug::write(b"0");
         return;
