@@ -864,6 +864,47 @@ unsafe fn load_cr3(address: u64) {
     }
 }
 
+pub struct AddressSpace {
+    pml4: *mut PageTable,
+}
+
+impl AddressSpace {
+    pub unsafe fn from_pml4(
+        pml4: *mut PageTable,
+    ) -> Self {
+        Self { pml4 }
+    }
+
+    pub fn pml4(&self) -> *mut PageTable {
+        self.pml4
+    }
+
+    pub unsafe fn mapper(&self) -> Mapper {
+        Mapper::new(self.pml4)
+    }
+
+    pub unsafe fn map(
+        &self,
+        allocator: &mut PhysicalFrameAllocator,
+        virtual_address: u64,
+        physical_address: u64,
+        flags: PageFlags,
+    ) -> Result<(), ()> {
+        let mut mapper = unsafe {
+            Mapper::new(self.pml4)
+        };
+
+        unsafe {
+            mapper.map(
+                allocator,
+                virtual_address,
+                physical_address,
+                flags,
+            )
+        }
+    }
+    }
+
 pub struct Mapper {
     pml4: *mut PageTable,
 }

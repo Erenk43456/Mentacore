@@ -36,6 +36,16 @@ pub fn run(
         b"paging::virtual_address_layout",
         || test_virtual_address_layout(),
     );
+
+    runner.run(
+        b"paging::address_space",
+        || test_address_space_abstraction(),
+    );
+
+    runner.run(
+        b"paging::address_space_mapping",
+        || test_address_space_mapping(allocator),
+    );
 }
 
 fn test_duplicate_mapping(
@@ -631,6 +641,86 @@ fn test_virtual_address_layout() -> bool {
     if crate::memory::paging::is_kernel_address(
         user_kernel_boundary,
     ) {
+        return false;
+    }
+
+    true
+}
+
+fn test_address_space_abstraction() -> bool {
+    let pml4 =
+        unsafe {
+            memory::paging::current_pml4()
+        };
+
+    let address_space =
+        unsafe {
+            memory::paging::AddressSpace::from_pml4(pml4)
+        };
+
+    address_space.pml4() == pml4
+}
+
+fn test_address_space_mapping(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let virtual_address =
+        0x0000_6000_0000_0000;
+
+    let pml4 =
+        unsafe {
+            memory::paging::current_pml4()
+        };
+
+    let address_space =
+        unsafe {
+            memory::paging::AddressSpace::from_pml4(
+                pml4,
+            )
+        };
+
+    let frame =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => return false,
+        };
+
+    unsafe {
+        if address_space
+            .map(
+                allocator,
+                virtual_address,
+                frame.start_address,
+                memory::paging::PageFlags {
+                    writable: true,
+                    cache_disable: false,
+                    user: true,
+                },
+            )
+            .is_err()
+        {
+            return false;
+        }
+    }
+
+    let entries =
+        unsafe {
+            match memory::paging::test_entry(
+                pml4,
+                virtual_address,
+            ) {
+                Some(entries) => entries,
+                None => return false,
+            }
+        };
+
+    let user_bit = 1u64 << 2;
+
+    if entries[3] & 1 == 0 {
+        return false;
+    }
+
+    if entries[3] & user_bit == 0 {
         return false;
     }
 
