@@ -175,16 +175,17 @@ The test infrastructure is enabled separately through the `kernel-tests` Cargo f
 The current test suites cover:
 
 * Physical frame allocation
-* Paging
+* Paging and address spaces
 * Heap allocation
-* Interrupt state
+* Interrupts and exceptions
 * Synchronization primitives
+* Timer behavior
 * TSC calibration
 
 The complete kernel test suite currently validates:
 
 ```text
-15/15 TESTS PASSED
+25/25 TESTS PASSED
 ALL TESTS PASSED
 ```
 
@@ -201,11 +202,21 @@ PAGING DUPLICATE MAP TEST OK
 PAGING MAPPING TEST OK
 PAGING UNMAP TEST OK
 PAGING UNMAP REJECTION TEST OK
+PAGING USER MAPPING PERMISSIONS TEST OK
+PAGING VIRTUAL ADDRESS LAYOUT TEST OK
+ADDRESS SPACE ABSTRACTION TEST OK
+ADDRESS SPACE MAPPING TEST OK
+ADDRESS SPACE UNMAPPING TEST OK
 
 HEAP TEST OK
 HEAP MULTI-PAGE TEST OK
 
 INTERRUPT STATE TEST OK
+TRAP FRAME LAYOUT TEST OK
+TIMER STACK ALIGNMENT TEST OK
+TIMER STABILITY TEST OK
+LAPIC TIMER STACK ALIGNMENT TEST OK
+DOUBLE FAULT IST1 TEST OK
 
 SPINLOCK TEST OK
 SPINLOCK INTERRUPT-SAFE TEST OK

@@ -96,7 +96,7 @@
 * [ ] Common exception reporting infrastructure
 * [ ] Register dump helper
 * [ ] Standardized exception diagnostics
-* [ ] Double Fault (#DF)
+* [x] Double Fault (#DF)
 * [ ] Stack Segment Fault (#SS)
 * [ ] Invalid TSS (#TS)
 * [ ] Segment Not Present (#NP)
@@ -121,40 +121,40 @@
 
 ### Interrupts
 
-* [ ] Define hardware interrupt architecture
-* [ ] Configure interrupt controller
-* [ ] Implement interrupt entry stubs
-* [ ] Implement interrupt dispatch
-* [ ] Implement interrupt registration
-* [ ] Implement interrupt masking
-* [ ] Implement interrupt acknowledgement
+* [x] Define hardware interrupt architecture
+* [x] Configure interrupt controller
+* [x] Implement interrupt entry stubs
+* [x] Implement interrupt dispatch
+* [x] Implement interrupt registration
+* [x] Implement interrupt masking
+* [x] Implement interrupt acknowledgement
 
 ---
 
 ## 2.2 GDT and CPU State
 
-* [ ] Define GDT
-* [ ] Define code segment
-* [ ] Define data segment
-* [ ] Load GDT with `lgdt`
-* [ ] Implement segment reload
-* [ ] Define Task State Segment
-* [ ] Load TSS
-* [ ] Configure kernel stack handling
-* [ ] Define CPU initialization layer
-* [ ] Add CPU feature detection
+* [x] Define GDT
+* [x] Define code segment
+* [x] Define data segment
+* [x] Load GDT with `lgdt`
+* [x] Implement segment reload
+* [x] Define Task State Segment
+* [x] Load TSS
+* [x] Configure kernel stack handling
+* [x] Define CPU initialization layer
+* [x] Add CPU feature detection
 
 ---
 
 ## 2.3 Timer
 
-* [ ] Select initial timer source
-* [ ] Initialize timer hardware
-* [ ] Configure timer frequency
-* [ ] Implement timer interrupts
-* [ ] Track system ticks
+* [x] Select initial timer source
+* [x] Initialize timer hardware
+* [x] Configure timer frequency
+* [x] Implement timer interrupts
+* [x] Track system ticks
 * [ ] Implement monotonic time source
-* [ ] Validate timer stability
+* [x] Validate timer stability
 
 ---
 
