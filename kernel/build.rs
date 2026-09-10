@@ -2,11 +2,13 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
-fn assemble(source: &PathBuf, object: &PathBuf) {
+fn assemble(source: &PathBuf, object: &PathBuf, asm_dir: &PathBuf) {
     let status = Command::new("nasm")
         .args([
             "-f",
             "elf64",
+            "-I",
+            &format!("{}\\", asm_dir.display()),
             source.to_str().unwrap(),
             "-o",
             object.to_str().unwrap(),
@@ -29,8 +31,14 @@ fn main() {
     let out_dir =
         PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
+    println!(
+        "cargo:rerun-if-changed={}",
+        asm_dir.join("common.inc").display()
+    );
+
     let sources = [
-        ("interrupts.s", "interrupts.o"),
+        ("exceptions.s", "exceptions.o"),
+        ("timer.s", "timer.o"),
         ("cpu.s", "cpu.o"),
     ];
 
@@ -43,7 +51,7 @@ fn main() {
             source.display()
         );
 
-        assemble(&source, &object);
+        assemble(&source, &object, &asm_dir);
 
         println!(
             "cargo:rustc-link-arg={}",
