@@ -130,9 +130,21 @@ general_protection_entry:
     push r10
     push r11
 
+    ; Preserve the register-frame pointer before
+    ; applying ABI alignment padding.
     mov rdi, rsp
-    mov rsi, [rsp + 72]
 
+    ; CPU-pushed error code is at [register_frame + 72].
+    mov rsi, [rdi + 72]
+
+    ; SysV x86-64 ABI:
+    ;   call-site RSP % 16 == 0
+    test rsp, 8
+    jz .general_protection_dispatch_aligned
+
+    sub rsp, 8
+
+.general_protection_dispatch_aligned:
     call general_protection_dispatch
 
 
@@ -153,11 +165,30 @@ page_fault_entry:
     push r10
     push r11
 
+    ; Preserve the register-frame pointer before
+    ; applying ABI alignment padding.
     mov rdi, rsp
-    mov rsi, [rsp + 72]
+
+    ; CPU-pushed error code is at [register_frame + 72].
+    mov rsi, [rdi + 72]
+
+    ; Normalize the call-site stack alignment.
+    test rsp, 8
+    jz .page_fault_dispatch_aligned
+
+    sub rsp, 8
 
     call page_fault_dispatch
 
+    ; Padding was added, so remove it explicitly.
+    add rsp, 8
+
+    jmp .page_fault_restore
+
+.page_fault_dispatch_aligned:
+    call page_fault_dispatch
+
+.page_fault_restore:
     pop r11
     pop r10
     pop r9
@@ -168,6 +199,7 @@ page_fault_entry:
     pop rcx
     pop rax
 
+    ; Discard CPU-pushed page-fault error code.
     add rsp, 8
 
     iretq
