@@ -1,31 +1,26 @@
-use super::physical::PhysicalFrameAllocator;
 use super::heap::{HEAP_SIZE, HEAP_START};
+use super::physical::PhysicalFrameAllocator;
 use mentacore_boot_protocol::BootInfo;
 
 pub const PAGE_SIZE: u64 = 4096;
 const HUGE_PAGE_SIZE: u64 = 0x20_0000;
-
 const ENTRY_COUNT: usize = 512;
 
 const PRESENT: u64 = 1 << 0;
 const WRITABLE: u64 = 1 << 1;
+const USER: u64 = 1 << 2;
 const PCD: u64 = 1 << 4;
 const HUGE_PAGE: u64 = 1 << 7;
-const USER: u64 = 1 << 2;
 
+const ADDRESS_MASK: u64 = 0x000f_ffff_ffff_f000;
+const INDEX_MASK: u64 = 0x1ff;
 const IDENTITY_MAP_SIZE: u64 = 0x1_0000_0000;
 
-pub const USER_SPACE_START: u64 =
-    0x0000_0000_0000_0000;
+pub const USER_SPACE_START: u64 = 0x0000_0000_0000_0000;
+pub const USER_SPACE_END: u64 = 0x0000_7FFF_FFFF_FFFF;
 
-pub const USER_SPACE_END: u64 =
-    0x0000_7FFF_FFFF_FFFF;
-
-pub const KERNEL_SPACE_START: u64 =
-    0xFFFF_8000_0000_0000;
-
-pub const KERNEL_SPACE_END: u64 =
-    0xFFFF_FFFF_FFFF_FFFF;
+pub const KERNEL_SPACE_START: u64 = 0xFFFF_8000_0000_0000;
+pub const KERNEL_SPACE_END: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 
 #[derive(Clone, Copy)]
 pub struct PageFlags {
@@ -34,22 +29,17 @@ pub struct PageFlags {
     pub user: bool,
 }
 
+const KERNEL_FLAGS: PageFlags = PageFlags {
+    writable: true,
+    cache_disable: false,
+    user: false,
+};
+
 fn flags_to_entry(flags: PageFlags) -> u64 {
-    let mut entry = PRESENT;
-
-    if flags.writable {
-        entry |= WRITABLE;
-    }
-
-    if flags.cache_disable {
-        entry |= PCD;
-    }
-
-    if flags.user {
-        entry |= USER;
-    }
-
-    entry
+    PRESENT
+        | if flags.writable { WRITABLE } else { 0 }
+        | if flags.cache_disable { PCD } else { 0 }
+        | if flags.user { USER } else { 0 }
 }
 
 #[repr(align(4096))]
@@ -65,6 +55,182 @@ impl PageTable {
     }
 }
 
+#[derive(Clone, Copy)]
+struct PageTableIndices {
+    pml4: usize,
+    pdpt: usize,
+    pd: usize,
+    pt: usize,
+}
+
+fn page_table_indices(address: u64) -> PageTableIndices {
+    PageTableIndices {
+        pml4: ((address >> 39) & INDEX_MASK) as usize,
+        pdpt: ((address >> 30) & INDEX_MASK) as usize,
+        pd: ((address >> 21) & INDEX_MASK) as usize,
+        pt: ((address >> 12) & INDEX_MASK) as usize,
+    }
+}
+
+fn validate_mapping(
+    virtual_address: u64,
+    physical_address: u64,
+    flags: PageFlags,
+) -> Result<(), ()> {
+    if !is_canonical_address(virtual_address)
+        || virtual_address & (PAGE_SIZE - 1) != 0
+    {
+        return Err(());
+    }
+
+    if physical_address & (PAGE_SIZE - 1) != 0
+        || !is_valid_physical_address(physical_address)
+    {
+        return Err(());
+    }
+
+    if flags.user && !is_user_address(virtual_address) {
+        return Err(());
+    }
+
+    Ok(())
+}
+
+unsafe fn allocate_table(
+    allocator: &mut PhysicalFrameAllocator,
+) -> Result<(u64, *mut PageTable), ()> {
+    let frame = allocator.allocate_frame().ok_or(())?;
+    let table = frame.start_address as *mut PageTable;
+
+    unsafe {
+        (*table).zero();
+    }
+
+    Ok((frame.start_address, table))
+}
+
+unsafe fn create_page_tables(
+    allocator: &mut PhysicalFrameAllocator,
+) -> Result<(*mut PageTable, u64, [*mut PageTable; 4]), ()> {
+    let (pml4_address, pml4) =
+        unsafe { allocate_table(allocator)? };
+
+    let (pdpt_address, pdpt) =
+        unsafe { allocate_table(allocator)? };
+
+    let mut directories = [core::ptr::null_mut(); 4];
+    let mut directory_addresses = [0u64; 4];
+
+    for index in 0..4 {
+        let (address, table) =
+            unsafe { allocate_table(allocator)? };
+
+        directory_addresses[index] = address;
+        directories[index] = table;
+    }
+
+    unsafe {
+        (*pml4).entries[0] =
+            pdpt_address | PRESENT | WRITABLE;
+
+        for index in 0..4 {
+            (*pdpt).entries[index] =
+                directory_addresses[index]
+                | PRESENT
+                | WRITABLE;
+        }
+    }
+
+    for directory in directories {
+        fill_identity_directory(directory);
+    }
+
+    Ok((pml4, pml4_address, directories))
+}
+
+unsafe fn ensure_table(
+    parent: *mut PageTable,
+    index: usize,
+    allocator: &mut PhysicalFrameAllocator,
+    user: bool,
+) -> Result<*mut PageTable, ()> {
+    let entry = unsafe { (*parent).entries[index] };
+
+    if entry & PRESENT != 0 {
+        if user && entry & USER == 0 {
+            return Err(());
+        }
+
+        return Ok((entry & ADDRESS_MASK) as *mut PageTable);
+    }
+
+    let frame = allocator.allocate_frame().ok_or(())?;
+    let table = frame.start_address as *mut PageTable;
+
+    unsafe {
+        (*table).zero();
+        (*parent).entries[index] =
+            frame.start_address
+            | PRESENT
+            | WRITABLE
+            | if user { USER } else { 0 };
+    }
+
+    Ok(table)
+}
+
+unsafe fn find_page_table(
+    pml4: *mut PageTable,
+    virtual_address: u64,
+) -> Result<(*mut PageTable, PageTableIndices), ()> {
+    if !is_canonical_address(virtual_address)
+        || virtual_address & (PAGE_SIZE - 1) != 0
+    {
+        return Err(());
+    }
+
+    let indices = page_table_indices(virtual_address);
+
+    let pml4_entry = unsafe {
+        (*pml4).entries[indices.pml4]
+    };
+
+    if pml4_entry & PRESENT == 0 {
+        return Err(());
+    }
+
+    let pdpt = (pml4_entry & ADDRESS_MASK)
+        as *mut PageTable;
+
+    let pdpt_entry = unsafe {
+        (*pdpt).entries[indices.pdpt]
+    };
+
+    if pdpt_entry & PRESENT == 0
+        || pdpt_entry & HUGE_PAGE != 0
+    {
+        return Err(());
+    }
+
+    let pd = (pdpt_entry & ADDRESS_MASK)
+        as *mut PageTable;
+
+    let pd_entry = unsafe {
+        (*pd).entries[indices.pd]
+    };
+
+    if pd_entry & PRESENT == 0
+        || pd_entry & HUGE_PAGE != 0
+    {
+        return Err(());
+    }
+
+    let pt = (pd_entry & ADDRESS_MASK)
+        as *mut PageTable;
+
+    Ok((pt, indices))
+}
+
 #[cfg(feature = "kernel-tests")]
 pub unsafe fn test_entry(
     pml4: *mut PageTable,
@@ -74,39 +240,33 @@ pub unsafe fn test_entry(
         return None;
     }
 
-    let pml4_index =
-        ((virtual_address >> 39) & 0x1ff) as usize;
+    let indices = page_table_indices(virtual_address);
 
-    let pdpt_index =
-        ((virtual_address >> 30) & 0x1ff) as usize;
-
-    let pd_index =
-        ((virtual_address >> 21) & 0x1ff) as usize;
-
-    let pt_index =
-        ((virtual_address >> 12) & 0x1ff) as usize;
-
-    let pml4_entry = (*pml4).entries[pml4_index];
+    let pml4_entry = unsafe {
+        (*pml4).entries[indices.pml4]
+    };
 
     if pml4_entry & PRESENT == 0 {
         return None;
     }
 
-    let pdpt =
-        (pml4_entry & 0x000f_ffff_ffff_f000)
-            as *mut PageTable;
+    let pdpt = (pml4_entry & ADDRESS_MASK)
+        as *mut PageTable;
 
-    let pdpt_entry = (*pdpt).entries[pdpt_index];
+    let pdpt_entry = unsafe {
+        (*pdpt).entries[indices.pdpt]
+    };
 
     if pdpt_entry & PRESENT == 0 {
         return None;
     }
 
-    let pd =
-        (pdpt_entry & 0x000f_ffff_ffff_f000)
-            as *mut PageTable;
+    let pd = (pdpt_entry & ADDRESS_MASK)
+        as *mut PageTable;
 
-    let pd_entry = (*pd).entries[pd_index];
+    let pd_entry = unsafe {
+        (*pd).entries[indices.pd]
+    };
 
     if pd_entry & PRESENT == 0 {
         return None;
@@ -121,11 +281,12 @@ pub unsafe fn test_entry(
         ]);
     }
 
-    let pt =
-        (pd_entry & 0x000f_ffff_ffff_f000)
-            as *mut PageTable;
+    let pt = (pd_entry & ADDRESS_MASK)
+        as *mut PageTable;
 
-    let pte = (*pt).entries[pt_index];
+    let pte = unsafe {
+        (*pt).entries[indices.pt]
+    };
 
     Some([
         pml4_entry,
@@ -139,53 +300,10 @@ pub unsafe fn init(
     allocator: &mut PhysicalFrameAllocator,
     boot_info: &BootInfo,
 ) -> Result<(), ()> {
-    let pml4_frame = allocator.allocate_frame().ok_or(())?;
-    let pdpt_frame = allocator.allocate_frame().ok_or(())?;
+    let (pml4, pml4_address, directories) =
+        unsafe { create_page_tables(allocator)? };
 
-    let pd0_frame = allocator.allocate_frame().ok_or(())?;
-    let pd1_frame = allocator.allocate_frame().ok_or(())?;
-    let pd2_frame = allocator.allocate_frame().ok_or(())?;
-    let pd3_frame = allocator.allocate_frame().ok_or(())?;
-
-    let pml4 = pml4_frame.start_address as *mut PageTable;
-    let pdpt = pdpt_frame.start_address as *mut PageTable;
-
-    let pd0 = pd0_frame.start_address as *mut PageTable;
-    let pd1 = pd1_frame.start_address as *mut PageTable;
-    let pd2 = pd2_frame.start_address as *mut PageTable;
-    let pd3 = pd3_frame.start_address as *mut PageTable;
-
-    unsafe {
-        (*pml4).zero();
-        (*pdpt).zero();
-
-        (*pd0).zero();
-        (*pd1).zero();
-        (*pd2).zero();
-        (*pd3).zero();
-    }
-
-    unsafe {
-        (*pml4).entries[0] =
-            pdpt_frame.start_address | PRESENT | WRITABLE;
-
-        (*pdpt).entries[0] =
-            pd0_frame.start_address | PRESENT | WRITABLE;
-
-        (*pdpt).entries[1] =
-            pd1_frame.start_address | PRESENT | WRITABLE;
-
-        (*pdpt).entries[2] =
-            pd2_frame.start_address | PRESENT | WRITABLE;
-
-        (*pdpt).entries[3] =
-            pd3_frame.start_address | PRESENT | WRITABLE;
-    }
-
-    fill_identity_directory(pd0);
-    fill_identity_directory(pd1);
-    fill_identity_directory(pd2);
-    fill_identity_directory(pd3);
+    let pd2 = directories[2];
 
     map_framebuffer(
         pd2,
@@ -193,43 +311,11 @@ pub unsafe fn init(
         boot_info,
     )?;
 
-    let invalid_virtual = 0x0000_8000_0000_0000;
-
-    let invalid_frame =
-        allocator.allocate_frame().ok_or(())?;
-
     unsafe {
-        if map_page(
+        validate_initial_mapping_rejections(
             pml4,
             allocator,
-            invalid_virtual,
-            invalid_frame.start_address,
-            PageFlags {
-                writable: true,
-                cache_disable: false,
-                user: false,
-            },
-        ).is_ok() {
-            return Err(());
-        }
-    }
-
-    let invalid_physical = 0x0010_0000_0000_0000;
-
-    unsafe {
-        if map_page(
-            pml4,
-            allocator,
-            0xFFFF_9000_0000_2000,
-            invalid_physical,
-            PageFlags {
-                writable: true,
-                cache_disable: false,
-                user: false,
-            },
-        ).is_ok() {
-            return Err(());
-        }
+        )?;
     }
 
     let test_virtual = 0xFFFF_9000_0000_0000;
@@ -237,20 +323,13 @@ pub unsafe fn init(
     let test_frame =
         allocator.allocate_frame().ok_or(())?;
 
-    let test_physical =
-        test_frame.start_address;
-
     unsafe {
         map_page(
             pml4,
             allocator,
             test_virtual,
-            test_physical,
-            PageFlags {
-                writable: true,
-                cache_disable: false,
-                user: false,
-            },
+            test_frame.start_address,
+            KERNEL_FLAGS,
         )?;
     }
 
@@ -262,47 +341,53 @@ pub unsafe fn init(
     )?;
 
     unsafe {
-        load_cr3(pml4_frame.start_address);
+        load_cr3(pml4_address);
     }
 
-    let test_ptr =
-        test_virtual as *mut u64;
+    unsafe {
+        validate_initial_mapping(
+            pml4,
+            allocator,
+            test_virtual,
+        )?;
+    }
+
+    Ok(())
+}
+
+unsafe fn validate_initial_mapping_rejections(
+    pml4: *mut PageTable,
+    allocator: &mut PhysicalFrameAllocator,
+) -> Result<(), ()> {
+    let invalid_virtual =
+        0x0000_8000_0000_0000;
+
+    let invalid_frame =
+        allocator.allocate_frame().ok_or(())?;
 
     unsafe {
-        test_ptr.write(0xDEAD_BEEF_CAFE_BABE);
-
-        if test_ptr.read() != 0xDEAD_BEEF_CAFE_BABE {
+        if map_page(
+            pml4,
+            allocator,
+            invalid_virtual,
+            invalid_frame.start_address,
+            KERNEL_FLAGS,
+        ).is_ok() {
             return Err(());
         }
     }
 
-    let test_frame_2 =
-        allocator.allocate_frame().ok_or(())?;
-
-    let test_physical_2 =
-        test_frame_2.start_address;
+    let invalid_physical =
+        0x0010_0000_0000_0000;
 
     unsafe {
-        map_page(
+        if map_page(
             pml4,
             allocator,
-            test_virtual + PAGE_SIZE,
-            test_physical_2,
-            PageFlags {
-                writable: true,
-                cache_disable: false,
-                user: false,
-            },
-        )?;
-    }
-
-    let test_ptr_2 =
-        (test_virtual + PAGE_SIZE) as *mut u64;
-
-    unsafe {
-        test_ptr_2.write(0x1122_3344_5566_7788);
-
-        if test_ptr_2.read() != 0x1122_3344_5566_7788 {
+            0xFFFF_9000_0000_2000,
+            invalid_physical,
+            KERNEL_FLAGS,
+        ).is_ok() {
             return Err(());
         }
     }
@@ -310,7 +395,51 @@ pub unsafe fn init(
     Ok(())
 }
 
-fn fill_identity_directory(page_directory: *mut PageTable) {
+unsafe fn validate_initial_mapping(
+    pml4: *mut PageTable,
+    allocator: &mut PhysicalFrameAllocator,
+    virtual_address: u64,
+) -> Result<(), ()> {
+    let pointer = virtual_address as *mut u64;
+
+    unsafe {
+        pointer.write(0xDEAD_BEEF_CAFE_BABE);
+
+        if pointer.read() != 0xDEAD_BEEF_CAFE_BABE {
+            return Err(());
+        }
+    }
+
+    let frame =
+        allocator.allocate_frame().ok_or(())?;
+
+    unsafe {
+        map_page(
+            pml4,
+            allocator,
+            virtual_address + PAGE_SIZE,
+            frame.start_address,
+            KERNEL_FLAGS,
+        )?;
+    }
+
+    let pointer =
+        (virtual_address + PAGE_SIZE) as *mut u64;
+
+    unsafe {
+        pointer.write(0x1122_3344_5566_7788);
+
+        if pointer.read() != 0x1122_3344_5566_7788 {
+            return Err(());
+        }
+    }
+
+    Ok(())
+}
+
+fn fill_identity_directory(
+    page_directory: *mut PageTable,
+) {
     for index in 0..ENTRY_COUNT {
         let physical_address =
             (index as u64) * HUGE_PAGE_SIZE;
@@ -337,9 +466,10 @@ fn map_framebuffer(
         return Err(());
     }
 
-    let framebuffer_end = framebuffer_start
-        .checked_add(framebuffer_size)
-        .ok_or(())?;
+    let framebuffer_end =
+        framebuffer_start
+            .checked_add(framebuffer_size)
+            .ok_or(())?;
 
     if framebuffer_start >= IDENTITY_MAP_SIZE
         || framebuffer_end > IDENTITY_MAP_SIZE
@@ -354,21 +484,19 @@ fn map_framebuffer(
     let last_huge_page =
         (framebuffer_end - 1) / HUGE_PAGE_SIZE;
 
-    for huge_page_index in first_huge_page..=last_huge_page {
+    for huge_page_index
+        in first_huge_page..=last_huge_page
+    {
         let pd_index =
-            (huge_page_index % ENTRY_COUNT as u64) as usize;
+            (huge_page_index
+                % ENTRY_COUNT as u64) as usize;
 
-        let page_table_frame =
-            allocator.allocate_frame().ok_or(())?;
-
-        let page_table =
-            page_table_frame.start_address as *mut PageTable;
+        let (page_table_address, page_table) =
+            unsafe { allocate_table(allocator)? };
 
         unsafe {
-            (*page_table).zero();
-
             (*pd2).entries[pd_index] =
-                page_table_frame.start_address
+                page_table_address
                 | PRESENT
                 | WRITABLE;
         }
@@ -432,164 +560,58 @@ pub unsafe fn map_page(
     physical_address: u64,
     flags: PageFlags,
 ) -> Result<(), ()> {
-    if !is_canonical_address(virtual_address) {
-        return Err(());
-    }
+    validate_mapping(
+        virtual_address,
+        physical_address,
+        flags,
+    )?;
 
-    if virtual_address & (PAGE_SIZE - 1) != 0 {
-        return Err(());
-    }
+    let indices = page_table_indices(virtual_address);
+    let user = flags.user;
 
-    if physical_address & (PAGE_SIZE - 1) != 0 {
-        return Err(());
-    }
-
-    if !is_valid_physical_address(physical_address) {
-        return Err(());
-    }
-
-    if flags.user && !is_user_address(virtual_address) {
-        return Err(());
-    }
-
-    let pml4_index =
-        ((virtual_address >> 39) & 0x1ff) as usize;
-
-    let pdpt_index =
-        ((virtual_address >> 30) & 0x1ff) as usize;
-
-    let pd_index =
-        ((virtual_address >> 21) & 0x1ff) as usize;
-
-    let pt_index =
-        ((virtual_address >> 12) & 0x1ff) as usize;
-
-    // PML4 -> PDPT
-    let pdpt = if unsafe {
-        (*pml4).entries[pml4_index] & PRESENT
-    } != 0 {
-        let entry = unsafe {
-            (*pml4).entries[pml4_index]
-        };
-
-        if flags.user && entry & USER == 0 {
-            return Err(());
-        }
-
-        (entry & 0x000f_ffff_ffff_f000)
-            as *mut PageTable
-    } else {
-        let frame =
-            allocator.allocate_frame().ok_or(())?;
-
-        let table =
-            frame.start_address as *mut PageTable;
-
-        unsafe {
-            (*table).zero();
-
-            let mut entry =
-                frame.start_address
-                | PRESENT
-                | WRITABLE;
-
-            if flags.user {
-                entry |= USER;
-            }
-
-            (*pml4).entries[pml4_index] = entry;
-        }
-
-        table
+    let pdpt = unsafe {
+        ensure_table(
+            pml4,
+            indices.pml4,
+            allocator,
+            user,
+        )?
     };
 
-    // PDPT -> PD
-    let pd = if unsafe {
-        (*pdpt).entries[pdpt_index] & PRESENT
-    } != 0 {
-        let entry = unsafe {
-            (*pdpt).entries[pdpt_index]
-        };
-
-        if flags.user && entry & USER == 0 {
-            return Err(());
-        }
-
-        (entry & 0x000f_ffff_ffff_f000)
-            as *mut PageTable
-    } else {
-        let frame =
-            allocator.allocate_frame().ok_or(())?;
-
-        let table =
-            frame.start_address as *mut PageTable;
-
-        unsafe {
-            (*table).zero();
-
-            let mut entry =
-                frame.start_address
-                | PRESENT
-                | WRITABLE;
-
-            if flags.user {
-                entry |= USER;
-            }
-
-            (*pdpt).entries[pdpt_index] = entry;
-        }
-
-        table
+    let pd = unsafe {
+        ensure_table(
+            pdpt,
+            indices.pdpt,
+            allocator,
+            user,
+        )?
     };
 
-    // PD -> PT
     let pd_entry = unsafe {
-        (*pd).entries[pd_index]
+        (*pd).entries[indices.pd]
     };
 
-    let pt = if pd_entry & PRESENT != 0 {
-        if pd_entry & HUGE_PAGE != 0 {
-            return Err(());
-        }
+    if pd_entry & PRESENT != 0
+        && pd_entry & HUGE_PAGE != 0
+    {
+        return Err(());
+    }
 
-        if flags.user && pd_entry & USER == 0 {
-            return Err(());
-        }
-
-        (pd_entry & 0x000f_ffff_ffff_f000)
-            as *mut PageTable
-    } else {
-        let frame =
-            allocator.allocate_frame().ok_or(())?;
-
-        let table =
-            frame.start_address as *mut PageTable;
-
-        unsafe {
-            (*table).zero();
-
-            let mut entry =
-                frame.start_address
-                | PRESENT
-                | WRITABLE;
-
-            if flags.user {
-                entry |= USER;
-            }
-
-            (*pd).entries[pd_index] = entry;
-        }
-
-        table
+    let pt = unsafe {
+        ensure_table(
+            pd,
+            indices.pd,
+            allocator,
+            user,
+        )?
     };
 
-    // PT -> physical frame
     unsafe {
-        if (*pt).entries[pt_index] & PRESENT != 0 {
+        if (*pt).entries[indices.pt] & PRESENT != 0 {
             return Err(());
         }
 
-        (*pt).entries[pt_index] =
+        (*pt).entries[indices.pt] =
             physical_address
             | flags_to_entry(flags);
     }
@@ -601,76 +623,15 @@ pub unsafe fn unmap_page(
     pml4: *mut PageTable,
     virtual_address: u64,
 ) -> Result<u64, ()> {
-    if !is_canonical_address(virtual_address) {
-        return Err(());
-    }
-
-    if virtual_address & (PAGE_SIZE - 1) != 0 {
-        return Err(());
-    }
-
-    let pml4_index =
-        ((virtual_address >> 39) & 0x1ff) as usize;
-
-    let pdpt_index =
-        ((virtual_address >> 30) & 0x1ff) as usize;
-
-    let pd_index =
-        ((virtual_address >> 21) & 0x1ff) as usize;
-
-    let pt_index =
-        ((virtual_address >> 12) & 0x1ff) as usize;
-
-    // PML4 -> PDPT
-    let pml4_entry = unsafe {
-        (*pml4).entries[pml4_index]
+    let (pt, indices) = unsafe {
+        find_page_table(
+            pml4,
+            virtual_address,
+        )?
     };
 
-    if pml4_entry & PRESENT == 0 {
-        return Err(());
-    }
-
-    let pdpt =
-        (pml4_entry & 0x000f_ffff_ffff_f000)
-            as *mut PageTable;
-
-    // PDPT -> PD
-    let pdpt_entry = unsafe {
-        (*pdpt).entries[pdpt_index]
-    };
-
-    if pdpt_entry & PRESENT == 0 {
-        return Err(());
-    }
-
-    if pdpt_entry & HUGE_PAGE != 0 {
-        return Err(());
-    }
-
-    let pd =
-        (pdpt_entry & 0x000f_ffff_ffff_f000)
-            as *mut PageTable;
-
-    // PD -> PT
-    let pd_entry = unsafe {
-        (*pd).entries[pd_index]
-    };
-
-    if pd_entry & PRESENT == 0 {
-        return Err(());
-    }
-
-    if pd_entry & HUGE_PAGE != 0 {
-        return Err(());
-    }
-
-    let pt =
-        (pd_entry & 0x000f_ffff_ffff_f000)
-            as *mut PageTable;
-
-    // PT -> physical frame
     let pte = unsafe {
-        (*pt).entries[pt_index]
+        (*pt).entries[indices.pt]
     };
 
     if pte & PRESENT == 0 {
@@ -678,15 +639,11 @@ pub unsafe fn unmap_page(
     }
 
     let physical_address =
-        pte & 0x000f_ffff_ffff_f000;
+        pte & ADDRESS_MASK;
 
-    // Remove mapping.
     unsafe {
-        (*pt).entries[pt_index] = 0;
-    }
+        (*pt).entries[indices.pt] = 0;
 
-    // Remove stale TLB entry.
-    unsafe {
         core::arch::asm!(
             "invlpg [{}]",
             in(reg) virtual_address,
@@ -703,137 +660,77 @@ fn map_heap(
     virtual_start: u64,
     size: u64,
 ) -> Result<(), ()> {
-    if size == 0 {
-        return Err(());
-    }
-
-    if virtual_start & (PAGE_SIZE - 1) != 0 {
+    if size == 0
+        || virtual_start & (PAGE_SIZE - 1) != 0
+    {
         return Err(());
     }
 
     let virtual_end =
         virtual_start.checked_add(size).ok_or(())?;
 
-    if virtual_end <= virtual_start {
-        return Err(());
-    }
-
-    if !is_canonical_address(virtual_start)
+    if virtual_end <= virtual_start
+        || !is_canonical_address(virtual_start)
         || !is_canonical_address(virtual_end - 1)
     {
         return Err(());
     }
 
-    let pml4_index =
-        ((virtual_start >> 39) & 0x1ff) as usize;
+    let start =
+        page_table_indices(virtual_start);
 
-    let first_pdpt_index =
-        ((virtual_start >> 30) & 0x1ff) as usize;
+    let end =
+        page_table_indices(virtual_end - 1);
 
-    let last_pdpt_index =
-        (((virtual_end - 1) >> 30) & 0x1ff) as usize;
-
-    // The heap must remain inside one PDPT entry.
-    if first_pdpt_index != last_pdpt_index {
+    if start.pdpt != end.pdpt {
         return Err(());
     }
 
-    // PML4 -> PDPT
-    let pdpt = if unsafe {
-        (*pml4).entries[pml4_index] & PRESENT
-    } != 0 {
-        (unsafe {
-            (*pml4).entries[pml4_index]
-        } & 0x000f_ffff_ffff_f000) as *mut PageTable
-    } else {
-        let frame =
-            allocator.allocate_frame().ok_or(())?;
-
-        let table =
-            frame.start_address as *mut PageTable;
-
-        unsafe {
-            (*table).zero();
-
-            (*pml4).entries[pml4_index] =
-                frame.start_address
-                | PRESENT
-                | WRITABLE;
-        }
-
-        table
+    let pdpt = unsafe {
+        ensure_table(
+            pml4,
+            start.pml4,
+            allocator,
+            false,
+        )?
     };
 
-    // PDPT -> PD
-    let pd = if unsafe {
-        (*pdpt).entries[first_pdpt_index] & PRESENT
-    } != 0 {
-        let entry = unsafe {
-            (*pdpt).entries[first_pdpt_index]
-        };
+    let pd = unsafe {
+        let entry =
+            (*pdpt).entries[start.pdpt];
 
-        if entry & HUGE_PAGE != 0 {
+        if entry & PRESENT != 0
+            && entry & HUGE_PAGE != 0
+        {
             return Err(());
         }
 
-        (entry & 0x000f_ffff_ffff_f000)
-            as *mut PageTable
-    } else {
-        let frame =
-            allocator.allocate_frame().ok_or(())?;
-
-        let table =
-            frame.start_address as *mut PageTable;
-
-        unsafe {
-            (*table).zero();
-
-            (*pdpt).entries[first_pdpt_index] =
-                frame.start_address
-                | PRESENT
-                | WRITABLE;
-        }
-
-        table
+        ensure_table(
+            pdpt,
+            start.pdpt,
+            allocator,
+            false,
+        )?
     };
 
-    let first_pd_index =
-        ((virtual_start >> 21) & 0x1ff) as usize;
-
-    let last_pd_index =
-        (((virtual_end - 1) >> 21) & 0x1ff) as usize;
-
-    // Reserve the page tables covering the heap.
-    //
-    // The PTs themselves are present, but their PTEs
-    // remain non-present. Physical heap frames will be
-    // allocated later by the page-fault handler.
-    for pd_index in first_pd_index..=last_pd_index {
-        let pd_entry = unsafe {
+    for pd_index in start.pd..=end.pd {
+        let entry = unsafe {
             (*pd).entries[pd_index]
         };
 
-        if pd_entry & PRESENT != 0 {
-            if pd_entry & HUGE_PAGE != 0 {
-                return Err(());
-            }
-
-            continue;
+        if entry & PRESENT != 0
+            && entry & HUGE_PAGE != 0
+        {
+            return Err(());
         }
 
-        let frame =
-            allocator.allocate_frame().ok_or(())?;
-
-        let page_table =
-            frame.start_address as *mut PageTable;
-
         unsafe {
-            (*page_table).zero();
-
-            (*pd).entries[pd_index] =
-                frame.start_address
-                | PRESENT
-                | WRITABLE;
+            ensure_table(
+                pd,
+                pd_index,
+                allocator,
+                false,
+            )?;
         }
     }
 
@@ -851,7 +748,7 @@ pub unsafe fn current_pml4() -> *mut PageTable {
         );
     }
 
-    (address & 0x000f_ffff_ffff_f000) as *mut PageTable
+    (address & ADDRESS_MASK) as *mut PageTable
 }
 
 unsafe fn load_cr3(address: u64) {
@@ -880,9 +777,7 @@ impl AddressSpace {
     }
 
     pub unsafe fn mapper(&self) -> Mapper {
-        unsafe {
-            Mapper::new(self.pml4)
-        }
+        unsafe { Mapper::new(self.pml4) }
     }
 
     pub unsafe fn map(
@@ -892,9 +787,8 @@ impl AddressSpace {
         physical_address: u64,
         flags: PageFlags,
     ) -> Result<(), ()> {
-        let mut mapper = unsafe {
-            Mapper::new(self.pml4)
-        };
+        let mut mapper =
+            unsafe { Mapper::new(self.pml4) };
 
         unsafe {
             mapper.map(
@@ -910,13 +804,10 @@ impl AddressSpace {
         &self,
         virtual_address: u64,
     ) -> Result<u64, ()> {
-        let mapper = unsafe {
-            Mapper::new(self.pml4)
-        };
+        let mapper =
+            unsafe { Mapper::new(self.pml4) };
 
-        unsafe {
-            mapper.unmap(virtual_address)
-        }
+        unsafe { mapper.unmap(virtual_address) }
     }
 }
 
