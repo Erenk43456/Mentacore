@@ -36,7 +36,18 @@ divide_error_entry:
     push r10
     push r11
 
+    ; Preserve the register-frame pointer before
+    ; applying any ABI alignment padding.
     mov rdi, rsp
+
+    ; SysV x86-64 ABI:
+    ;   call-site RSP % 16 == 0
+    test rsp, 8
+    jz .divide_dispatch_aligned
+
+    sub rsp, 8
+
+.divide_dispatch_aligned:
     call divide_error_dispatch
 
 
@@ -57,7 +68,18 @@ invalid_opcode_entry:
     push r10
     push r11
 
+    ; Preserve the register-frame pointer before
+    ; applying any ABI alignment padding.
     mov rdi, rsp
+
+    ; SysV x86-64 ABI:
+    ;   call-site RSP % 16 == 0
+    test rsp, 8
+    jz .invalid_opcode_dispatch_aligned
+
+    sub rsp, 8
+
+.invalid_opcode_dispatch_aligned:
     call invalid_opcode_dispatch
 
 
