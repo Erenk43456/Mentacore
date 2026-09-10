@@ -163,6 +163,10 @@ static FRAME_ALLOCATOR: Spinlock<Option<PhysicalFrameAllocator>> =
 static TIMER_TICKS: AtomicU64 =
     AtomicU64::new(0);
 
+#[cfg(feature = "kernel-tests")]
+static NESTED_EXCEPTION_TEST_ARMED: AtomicU64 =
+    AtomicU64::new(0);
+
 pub fn timer_ticks() -> u64 {
     TIMER_TICKS.load(Ordering::Relaxed)
 }
@@ -270,6 +274,23 @@ extern "C" fn double_fault_dispatch(
         cpu_rsp >= ist1_start
             && cpu_rsp <= ist1_top;
 
+    #[cfg(feature = "kernel-tests")]
+    let nested_exception_armed =
+        NESTED_EXCEPTION_TEST_ARMED.load(
+            Ordering::Relaxed,
+        ) == 1;
+
+    #[cfg(feature = "kernel-tests")]
+    if nested_exception_armed {
+        serial_write(
+            b"NESTED EXCEPTION PATH ARMED\r\n"
+        );
+    } else {
+        serial_write(
+            b"NESTED EXCEPTION PATH FAILED\r\n"
+        );
+    }
+
     if ist1_ok {
         serial_write(
             b"DOUBLE FAULT IST1 STACK OK\r\n"
@@ -318,7 +339,7 @@ extern "C" fn double_fault_dispatch(
 
     #[cfg(feature = "kernel-tests")]
     {
-        if ist1_ok {
+        if ist1_ok && nested_exception_armed {
             let (passed, total) =
                 crate::tests::framework::result();
 
@@ -441,6 +462,11 @@ extern "C" fn lapic_timer_dispatch(
 
 #[cfg(feature = "kernel-tests")]
 pub fn trigger_double_fault_test() -> ! {
+    NESTED_EXCEPTION_TEST_ARMED.store(
+        1,
+        Ordering::Relaxed,
+    );
+
     unsafe {
         core::arch::asm!(
             "cli",
