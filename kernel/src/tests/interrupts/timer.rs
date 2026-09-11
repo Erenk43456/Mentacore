@@ -168,3 +168,71 @@ pub(super) fn test_lapic_timer_stack_alignment(
 
     alignment == 0
 }
+
+pub(super) fn test_lapic_timer_periodic(
+    lapic: &crate::hardware::lapic::Lapic,
+) -> bool {
+    let before =
+        crate::interrupts::lapic_timer_ticks();
+
+    unsafe {
+        lapic.arm_timer_periodic(
+            crate::interrupts::LAPIC_TIMER_VECTOR,
+            100_000_000,
+        );
+    }
+
+    let mut first = before;
+
+    for _ in 0..10_000_000 {
+        let current =
+            crate::interrupts::lapic_timer_ticks();
+
+        if current > before {
+            first = current;
+            break;
+        }
+
+        core::hint::spin_loop();
+    }
+
+    if first <= before {
+        debug::write(
+            b"\r\n[LAPIC TIMER PERIODIC] first tick timeout\r\n",
+        );
+        return false;
+    }
+
+    let mut second = first;
+
+    for _ in 0..10_000_000 {
+        let current =
+            crate::interrupts::lapic_timer_ticks();
+
+        if current > first {
+            second = current;
+            break;
+        }
+
+        core::hint::spin_loop();
+    }
+
+    debug::write(
+        b"\r\n[LAPIC TIMER PERIODIC] before = ",
+    );
+    debug::write_hex(before);
+
+    debug::write(
+        b", first = ",
+    );
+    debug::write_hex(first);
+
+    debug::write(
+        b", second = ",
+    );
+    debug::write_hex(second);
+
+    debug::write(b"\r\n");
+
+    second > first
+}

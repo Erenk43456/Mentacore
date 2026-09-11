@@ -36,6 +36,11 @@ pub fn run(
     );
 
     runner.run(
+        b"interrupts::lapic_timer_periodic",
+        || timer::test_lapic_timer_periodic(lapic),
+    );
+
+    runner.run(
         b"interrupts::timer_context",
         || crate::interrupts::validate_interrupt_context_layout(),
     );

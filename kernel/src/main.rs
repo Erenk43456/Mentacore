@@ -177,18 +177,18 @@ pub extern "C" fn _start(
     }
 
     // ---------------------------------------------------------
-    // LAPIC one-shot timer
+    // LAPIC periodic timer
     // ---------------------------------------------------------
 
     unsafe {
-        lapic.arm_timer_oneshot(
+        lapic.arm_timer_periodic(
             interrupts::LAPIC_TIMER_VECTOR,
             100_000_000,
         );
     }
 
     debug::write(
-        b"LAPIC TIMER ARMED\r\n"
+        b"LAPIC PERIODIC TIMER ARMED\r\n"
     );
 
     unsafe {

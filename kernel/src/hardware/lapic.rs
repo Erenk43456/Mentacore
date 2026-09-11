@@ -214,6 +214,31 @@ impl Lapic {
         }
     }
 
+    pub unsafe fn arm_timer_periodic(
+        &self,
+        vector: u8,
+        initial_count: u32,
+    ) {
+        unsafe {
+            self.set_lvt_timer(
+                LAPIC_LVT_MASKED
+                    | LAPIC_LVT_TIMER_PERIODIC
+                    | vector as u32,
+            );
+
+            self.set_timer_divide(0x0000_000B);
+
+            self.set_timer_initial_count(
+                initial_count,
+            );
+
+            self.set_lvt_timer(
+                LAPIC_LVT_TIMER_PERIODIC
+                    | vector as u32,
+            );
+        }
+    }
+
     pub unsafe fn timer_current_count(
         &self,
     ) -> u32 {
