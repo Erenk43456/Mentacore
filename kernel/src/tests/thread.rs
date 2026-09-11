@@ -5,6 +5,7 @@ use crate::thread::{
     KERNEL_STACK_PAGES,
     KERNEL_STACK_SIZE,
     Thread,
+    ThreadManager,
     ThreadState,
 };
 
@@ -326,6 +327,16 @@ pub(super) fn run(
         test_kernel_stack_validation,
     );
 
+    runner.run(
+        b"thread::manager_creation",
+        test_thread_manager_creation,
+    );
+
+    runner.run(
+        b"thread::manager_operations",
+        || test_thread_manager_operations(allocator),
+    );
+
     let before =
         allocator.allocated_count();
 
@@ -346,4 +357,83 @@ pub(super) fn run(
         b"thread::kernel_stack_allocation",
         || result,
     );
+}
+
+pub(super) fn test_thread_manager_creation() -> bool {
+    let manager = crate::thread::ThreadManager::new();
+
+    manager.is_empty()
+        && manager.count() == 0
+}
+
+pub(super) fn test_thread_manager_operations(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let mut manager =
+        crate::thread::ThreadManager::new();
+
+    if manager.create(1, 42, allocator).is_err() {
+        return false;
+    }
+
+    if manager.create(2, 42, allocator).is_err() {
+        return false;
+    }
+
+    if manager.create(1, 42, allocator).is_ok() {
+        return false;
+    }
+
+    if manager.count() != 2 {
+        return false;
+    }
+
+    if !manager.contains(1)
+        || !manager.contains(2)
+        || manager.contains(3)
+    {
+        return false;
+    }
+
+    if manager
+        .get(1)
+        .map(|thread| {
+            thread.tid() == 1
+                && thread.process_id() == 42
+        })
+        != Some(true)
+    {
+        return false;
+    }
+
+    if let Some(thread) = manager.get_mut(2) {
+        thread.set_state(
+            ThreadState::Running
+        );
+    } else {
+        return false;
+    }
+
+    if manager
+        .get(2)
+        .map(|thread| {
+            thread.state()
+                == ThreadState::Running
+        })
+        != Some(true)
+    {
+        return false;
+    }
+
+    let removed =
+        match manager.remove(1) {
+            Ok(thread) => thread,
+            Err(()) => return false,
+        };
+
+    removed.tid() == 1
+        && manager.count() == 1
+        && !manager.contains(1)
+        && manager.contains(2)
+        && manager.remove(1).is_err()
 }

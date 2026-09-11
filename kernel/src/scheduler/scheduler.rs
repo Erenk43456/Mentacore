@@ -1,4 +1,7 @@
-use crate::thread::ThreadId;
+use crate::thread::{
+    ThreadId,
+    ThreadManager,
+};
 
 use super::queue::RunnableQueue;
 
@@ -26,6 +29,18 @@ impl Scheduler {
         }
 
         Ok(())
+    }
+
+    pub fn add_thread(
+        &mut self,
+        manager: &ThreadManager,
+        thread_id: ThreadId,
+    ) -> Result<(), ()> {
+        if !manager.contains(thread_id) {
+            return Err(());
+        }
+
+        self.add(thread_id)
     }
 
     pub fn remove(

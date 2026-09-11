@@ -80,8 +80,14 @@ impl KernelTestRunner {
         );
     }
 
-    pub fn run_scheduler(&mut self) {
-        scheduler::run(&mut self.runner);
+    pub fn run_scheduler(
+        &mut self,
+        allocator: &mut PhysicalFrameAllocator,
+    ) {
+        scheduler::run(
+            &mut self.runner,
+            allocator,
+        );
     }
 
     pub fn run_interrupts(

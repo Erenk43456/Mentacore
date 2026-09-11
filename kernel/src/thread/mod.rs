@@ -1,10 +1,16 @@
 mod context;
+mod manager;
 mod stack;
 mod thread;
 
 pub use context::{
     context_switch,
     KernelContext,
+};
+
+pub use manager::{
+    ThreadManager,
+    MAX_THREADS,
 };
 
 pub use stack::{

@@ -1,11 +1,15 @@
 mod creation;
+mod integration;
 mod queue;
 mod round_robin;
+
+use crate::memory::physical::PhysicalFrameAllocator;
 
 use super::framework::TestRunner;
 
 pub(super) fn run(
     runner: &mut TestRunner,
+    allocator: &mut PhysicalFrameAllocator,
 ) {
     runner.run(
         b"scheduler::creation",
@@ -50,5 +54,20 @@ pub(super) fn run(
     runner.run(
         b"scheduler::round_robin_empty",
         round_robin::round_robin_empty,
+    );
+
+    runner.run(
+        b"scheduler::managed_thread",
+        || integration::scheduler_accepts_managed_thread(allocator),
+    );
+
+    runner.run(
+        b"scheduler::unknown_thread",
+        || integration::scheduler_rejects_unknown_thread(allocator),
+    );
+
+    runner.run(
+        b"scheduler::managed_thread_selection",
+        || integration::scheduler_selects_managed_threads(allocator),
     );
 }

@@ -110,8 +110,9 @@ pub extern "C" fn _start(
         &mut allocator,
     );
 
-    #[cfg(feature = "kernel-tests")]
-    test_runner.run_scheduler();
+    test_runner.run_scheduler(
+        &mut allocator,
+    );
 
     // ---------------------------------------------------------
     // Heap
