@@ -128,9 +128,15 @@ impl PhysicalFrameAllocator {
                 continue;
             }
 
-            for frame in start..end {
+            let address =
+                start.checked_mul(PAGE_SIZE)?;
+
+            let frame =
+                Frame::new(address)?;
+
+            for frame_number in start..end {
                 unsafe {
-                    self.bitmap.set(frame);
+                    self.bitmap.set(frame_number);
                 }
             }
 
@@ -140,10 +146,7 @@ impl PhysicalFrameAllocator {
             self.live_allocated_frames += count;
             self.total_allocations += count;
 
-            let address =
-                start.checked_mul(PAGE_SIZE)?;
-
-            return Frame::new(address);
+            return Some(frame);
         }
 
         None
