@@ -1,5 +1,9 @@
+use crate::memory::physical::PhysicalFrameAllocator;
+
 pub const KERNEL_STACK_SIZE: u64 = 16 * 1024;
 pub const KERNEL_STACK_ALIGNMENT: u64 = 16;
+pub const KERNEL_STACK_PAGES: usize =
+    (KERNEL_STACK_SIZE / crate::memory::physical::PAGE_SIZE) as usize;
 
 #[derive(Clone, Copy)]
 pub struct KernelStack {
@@ -32,6 +36,25 @@ impl KernelStack {
             base,
             top,
         })
+    }
+
+    pub fn allocate(
+        allocator: &mut PhysicalFrameAllocator,
+    ) -> Option<Self> {
+        let mut first_frame = None;
+
+        for index in 0..KERNEL_STACK_PAGES {
+            let frame = allocator.allocate_frame()?;
+
+            if index == 0 {
+                first_frame = Some(frame.start_address);
+            }
+        }
+
+        let base = first_frame?;
+        let top = base + KERNEL_STACK_SIZE;
+
+        Self::new(base, top)
     }
 
     pub fn base(&self) -> u64 {

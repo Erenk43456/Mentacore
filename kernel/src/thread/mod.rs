@@ -7,6 +7,7 @@ pub use context::KernelContext;
 pub use stack::{
     KernelStack,
     KERNEL_STACK_ALIGNMENT,
+    KERNEL_STACK_PAGES,
     KERNEL_STACK_SIZE,
 };
 

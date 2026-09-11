@@ -107,6 +107,11 @@ pub extern "C" fn _start(
     #[cfg(feature = "kernel-tests")]
     test_runner.run_thread();
 
+    #[cfg(feature = "kernel-tests")]
+    test_runner.run_thread_with_allocator(
+        &mut allocator
+    );
+
     // ---------------------------------------------------------
     // Heap
     // ---------------------------------------------------------

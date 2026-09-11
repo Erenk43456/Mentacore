@@ -73,6 +73,16 @@ impl KernelTestRunner {
         thread::run(&mut self.runner);
     }
 
+    pub fn run_thread_with_allocator(
+        &mut self,
+        allocator: &mut PhysicalFrameAllocator,
+    ) {
+        thread::run_allocation(
+            &mut self.runner,
+            allocator,
+        );
+    }
+
     pub fn run_interrupts(
         &mut self,
         lapic: &crate::hardware::lapic::Lapic,

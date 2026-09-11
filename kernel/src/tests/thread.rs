@@ -1,5 +1,7 @@
 use crate::thread::{
     KernelStack,
+    KERNEL_STACK_ALIGNMENT,
+    KERNEL_STACK_PAGES,
     KERNEL_STACK_SIZE,
     Thread,
     ThreadState,
@@ -153,13 +155,35 @@ pub(super) fn run(
         test_thread_kernel_stack,
     );
 
-    runner.run( 
-        b"thread::kernel_stack_direct", 
-        test_kernel_stack, 
+    runner.run(
+        b"thread::kernel_stack_direct",
+        test_kernel_stack,
     );
 
     runner.run(
         b"thread::kernel_stack_validation",
         test_kernel_stack_validation,
+    );
+}
+
+pub(super) fn run_allocation(
+    runner: &mut super::framework::TestRunner,
+    allocator: &mut crate::memory::physical::PhysicalFrameAllocator,
+) {
+    let before = allocator.allocated_count();
+
+    let result =
+        KernelStack::allocate(allocator)
+            .map(|stack| {
+                allocator.allocated_count() == before + KERNEL_STACK_PAGES as u64
+                    && stack.size() == KERNEL_STACK_SIZE
+                    && stack.base() % KERNEL_STACK_ALIGNMENT == 0
+                    && stack.top() % KERNEL_STACK_ALIGNMENT == 0
+            })
+            .unwrap_or(false);
+
+    runner.run(
+        b"thread::kernel_stack_allocation",
+        || result,
     );
 }
