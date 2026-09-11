@@ -96,6 +96,34 @@ impl Scheduler {
         Some(next)
     }
 
+    pub fn preempt(
+        &mut self,
+        manager: &mut ThreadManager,
+        current_rsp: u64,
+    ) -> Option<u64> {
+        let previous = self.current()?;
+        let next = self.schedule_next(manager)?;
+
+        if previous == next {
+            if let Some(thread) = manager.get_mut(previous) {
+                thread.set_interrupt_rsp(current_rsp);
+            }
+
+            return Some(current_rsp);
+        }
+
+        if let Some(thread) = manager.get_mut(previous) {
+            thread.set_interrupt_rsp(current_rsp);
+        }
+
+        let next_rsp =
+            manager
+                .get(next)?
+                .interrupt_rsp();
+
+        Some(next_rsp)
+    }
+
     pub fn schedule_next(
         &mut self,
         manager: &mut ThreadManager,

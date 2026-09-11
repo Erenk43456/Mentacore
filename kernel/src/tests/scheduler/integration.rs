@@ -4,7 +4,10 @@ use crate::scheduler::{
     SchedulerRuntime,
     IDLE_THREAD_ID,
 };
-use crate::thread::ThreadManager;
+use crate::thread::{
+    ThreadManager,
+    ThreadState,
+};
 
 extern "C" fn scheduler_test_entry() -> ! {
     loop {
@@ -310,4 +313,129 @@ pub(super) fn scheduler_runtime_starts_idle_thread(
         == Some(
             crate::thread::ThreadState::Running
         )
+}
+
+pub(super) fn scheduler_preempts_thread(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let mut manager =
+        ThreadManager::new();
+
+    let mut scheduler =
+        Scheduler::new();
+
+    if manager.create(
+        1,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
+        return false;
+    }
+
+    if manager.create(
+        2,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
+        return false;
+    }
+
+    if scheduler
+        .add_thread(&manager, 1)
+        .is_err()
+    {
+        return false;
+    }
+
+    if scheduler
+        .add_thread(&manager, 2)
+        .is_err()
+    {
+        return false;
+    }
+
+    if scheduler.start(&mut manager)
+        != Some(1)
+    {
+        return false;
+    }
+
+    /*
+     * Simulate the RSP supplied by the LAPIC
+     * interrupt entry path.
+     */
+    let current_rsp =
+        0x001d_0000_u64;
+
+    let next_rsp =
+        match scheduler.preempt(
+            &mut manager,
+            current_rsp,
+        ) {
+            Some(rsp) => rsp,
+            None => return false,
+        };
+
+    /*
+     * Thread 1 must now contain the interrupt
+     * frame belonging to the interrupted context.
+     */
+    if manager
+        .get(1)
+        .map(|thread| {
+            thread.interrupt_rsp()
+                == current_rsp
+        })
+        != Some(true)
+    {
+        return false;
+    }
+
+    /*
+     * Scheduler must have selected thread 2.
+     */
+    if scheduler.current() != Some(2) {
+        return false;
+    }
+
+    /*
+     * Thread 1 becomes Ready and thread 2
+     * becomes Running.
+     */
+    if manager
+        .get(1)
+        .map(|thread| {
+            thread.state()
+                == ThreadState::Ready
+        })
+        != Some(true)
+    {
+        return false;
+    }
+
+    if manager
+        .get(2)
+        .map(|thread| {
+            thread.state()
+                == ThreadState::Running
+        })
+        != Some(true)
+    {
+        return false;
+    }
+
+    /*
+     * The returned RSP must be the pre-built
+     * InterruptContext of thread 2.
+     */
+    next_rsp != 0
+        && next_rsp
+            == manager
+                .get(2)
+                .map(|thread|
+                    thread.interrupt_rsp()
+                )
+                .unwrap_or(0)
 }

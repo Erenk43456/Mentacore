@@ -6,6 +6,7 @@ mod thread;
 
 pub use context::{
     context_switch,
+    interrupt_context_switch,
     KernelContext,
 };
 

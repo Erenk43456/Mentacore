@@ -6,6 +6,7 @@ mod round_robin;
 use crate::tests::scheduler::integration::{
     scheduler_accepts_managed_thread,
     scheduler_manages_thread_states,
+    scheduler_preempts_thread,
     scheduler_rejects_unknown_thread,
     scheduler_runtime_starts_idle_thread,
     scheduler_selects_managed_threads,
@@ -94,5 +95,10 @@ pub(super) fn run(
     runner.run(
         b"scheduler::runtime",
         || scheduler_runtime_starts_idle_thread(allocator),
+    );
+
+    runner.run(
+        b"scheduler::preemption",
+        || scheduler_preempts_thread(allocator),
     );
 }

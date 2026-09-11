@@ -5,6 +5,7 @@ use crate::thread::{
     ThreadState,
     ThreadId,
 };
+use crate::sync::Spinlock;
 
 use super::Scheduler;
 
@@ -22,7 +23,29 @@ pub struct SchedulerRuntime {
     manager: ThreadManager,
 }
 
+pub static SCHEDULER_RUNTIME:
+    Spinlock<Option<SchedulerRuntime>> =
+    Spinlock::new(None);
+
 impl SchedulerRuntime {
+    pub fn initialize(
+        allocator: &mut PhysicalFrameAllocator,
+    ) -> Result<(), ()> {
+        let runtime =
+            SchedulerRuntime::new(allocator)?;
+
+        let mut guard =
+            SCHEDULER_RUNTIME.lock_irqsave();
+
+        if guard.is_some() {
+            return Err(());
+        }
+
+        *guard = Some(runtime);
+
+        Ok(())
+    }
+
     pub fn new(
         allocator: &mut PhysicalFrameAllocator,
     ) -> Result<Self, ()> {

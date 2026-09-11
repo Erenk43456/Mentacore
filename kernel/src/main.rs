@@ -133,11 +133,10 @@ pub extern "C" fn _start(
     // Scheduler
     // ---------------------------------------------------------
 
-    let scheduler_runtime =
-        scheduler::SchedulerRuntime::new(
-            &mut allocator,
-        )
-        .expect("failed to initialize scheduler");
+    scheduler::SchedulerRuntime::initialize(
+        &mut allocator,
+    )
+    .expect("failed to initialize scheduler");
 
     debug::write(
         b"Scheduler initialized.\r\n"
