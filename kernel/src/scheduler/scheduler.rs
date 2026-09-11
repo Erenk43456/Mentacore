@@ -1,4 +1,5 @@
 use crate::thread::{
+    context_switch,
     ThreadId,
     ThreadManager,
 };
@@ -56,6 +57,43 @@ impl Scheduler {
         }
 
         Some(current)
+    }
+
+    pub fn switch_to_next(
+        &mut self,
+        manager: &mut ThreadManager,
+    ) -> Option<ThreadId> {
+        let previous = self.current()?;
+        let next = self.schedule_next(manager)?;
+
+        if previous == next {
+            return Some(next);
+        }
+
+        let current_context =
+            match manager.get_mut(previous) {
+                Some(thread) =>
+                    thread.context_mut()
+                        as *mut crate::thread::KernelContext,
+                None => return None,
+            };
+
+        let next_context =
+            match manager.get(next) {
+                Some(thread) =>
+                    thread.context()
+                        as *const crate::thread::KernelContext,
+                None => return None,
+            };
+
+        unsafe {
+            context_switch(
+                &mut *current_context,
+                &*next_context,
+            );
+        }
+
+        Some(next)
     }
 
     pub fn schedule_next(

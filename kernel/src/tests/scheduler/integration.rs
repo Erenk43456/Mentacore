@@ -186,3 +186,91 @@ pub(super) fn scheduler_manages_thread_states(
         })
         == Some(true)
 }
+
+static mut SCHEDULER_SWITCH_RETURN_CONTEXT:
+    *const crate::thread::KernelContext =
+    core::ptr::null();
+
+static mut SCHEDULER_SWITCH_TARGET:
+    crate::thread::KernelContext =
+    crate::thread::KernelContext::new(0, 0);
+
+static mut SCHEDULER_SWITCH_REACHED: bool = false;
+
+#[unsafe(no_mangle)]
+extern "C" fn scheduler_context_switch_entry() -> ! {
+    unsafe {
+        SCHEDULER_SWITCH_REACHED = true;
+
+        crate::thread::context_switch(
+            &raw mut SCHEDULER_SWITCH_TARGET,
+            SCHEDULER_SWITCH_RETURN_CONTEXT,
+        );
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+pub(super) fn scheduler_switches_to_selected_thread(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let mut manager = ThreadManager::new();
+    let mut scheduler = Scheduler::new();
+
+    if manager.create(
+        1,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
+        return false;
+    }
+
+    if manager.create(
+        2,
+        42,
+        allocator,
+        scheduler_context_switch_entry,
+    ).is_err() {
+        return false;
+    }
+
+    if scheduler
+        .add_thread(&manager, 1)
+        .is_err()
+    {
+        return false;
+    }
+
+    if scheduler
+        .add_thread(&manager, 2)
+        .is_err()
+    {
+        return false;
+    }
+
+    if scheduler.start(&mut manager) != Some(1) {
+        return false;
+    }
+
+    let return_context =
+        match manager.get(1) {
+            Some(thread) =>
+                core::ptr::addr_of!(*thread.context()),
+            None => return false,
+        };
+
+    unsafe {
+        SCHEDULER_SWITCH_RETURN_CONTEXT =
+            return_context;
+        SCHEDULER_SWITCH_REACHED = false;
+
+        if scheduler.switch_to_next(&mut manager) != Some(2) {
+            return false;
+        }
+
+        return SCHEDULER_SWITCH_REACHED;
+    }
+}

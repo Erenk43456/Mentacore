@@ -3,7 +3,10 @@ mod integration;
 mod queue;
 mod round_robin;
 
-use crate::tests::scheduler::integration::scheduler_manages_thread_states;
+use crate::tests::scheduler::integration::{
+    scheduler_manages_thread_states,
+    scheduler_switches_to_selected_thread,
+};
 use crate::memory::physical::PhysicalFrameAllocator;
 
 use super::framework::TestRunner;
@@ -77,5 +80,10 @@ pub(super) fn run(
         || {
             scheduler_manages_thread_states(allocator)
         },
+    );
+
+    runner.run(
+        b"scheduler::context_switch",
+        || scheduler_switches_to_selected_thread(allocator),
     );
 }
