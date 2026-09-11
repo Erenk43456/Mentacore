@@ -49,4 +49,21 @@ pub(super) fn run(
         b"thread::state",
         test_thread_state,
     );
+
+    runner.run(
+        b"thread::context",
+        test_thread_context,
+    );
+}
+
+pub(super) fn test_thread_context() -> bool {
+    let thread =
+        Thread::new(3, 42);
+
+    let context =
+        thread.context();
+
+    context.rsp() == 0
+        && context.rip() == 0
+        && context.rflags() == 0x202
 }
