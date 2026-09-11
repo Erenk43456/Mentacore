@@ -4,7 +4,11 @@ mod queue;
 mod round_robin;
 
 use crate::tests::scheduler::integration::{
+    scheduler_accepts_managed_thread,
     scheduler_manages_thread_states,
+    scheduler_rejects_unknown_thread,
+    scheduler_runtime_starts_idle_thread,
+    scheduler_selects_managed_threads,
     scheduler_switches_to_selected_thread,
 };
 use crate::memory::physical::PhysicalFrameAllocator;
@@ -85,5 +89,10 @@ pub(super) fn run(
     runner.run(
         b"scheduler::context_switch",
         || scheduler_switches_to_selected_thread(allocator),
+    );
+
+    runner.run(
+        b"scheduler::runtime",
+        || scheduler_runtime_starts_idle_thread(allocator),
     );
 }

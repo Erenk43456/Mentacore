@@ -1,5 +1,6 @@
 mod queue;
 mod scheduler;
+mod runtime;
 
 pub use queue::{
     RunnableQueue,
@@ -7,3 +8,7 @@ pub use queue::{
 };
 
 pub use scheduler::Scheduler;
+pub use runtime::{
+    SchedulerRuntime,
+    IDLE_THREAD_ID,
+};

@@ -1,5 +1,9 @@
 use crate::memory::physical::PhysicalFrameAllocator;
-use crate::scheduler::Scheduler;
+use crate::scheduler::{
+    Scheduler,
+    SchedulerRuntime,
+    IDLE_THREAD_ID,
+};
 use crate::thread::ThreadManager;
 
 extern "C" fn scheduler_test_entry() -> ! {
@@ -273,4 +277,37 @@ pub(super) fn scheduler_switches_to_selected_thread(
 
         return SCHEDULER_SWITCH_REACHED;
     }
+}
+
+pub(super) fn scheduler_runtime_starts_idle_thread(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let runtime =
+        match SchedulerRuntime::new(allocator) {
+            Ok(runtime) => runtime,
+            Err(()) => return false,
+        };
+
+    if runtime.current()
+        != Some(IDLE_THREAD_ID)
+    {
+        return false;
+    }
+
+    if runtime.scheduler().count() != 1 {
+        return false;
+    }
+
+    if runtime
+        .thread_manager()
+        .get(IDLE_THREAD_ID)
+        .is_none()
+    {
+        return false;
+    }
+
+    runtime.current_state()
+        == Some(
+            crate::thread::ThreadState::Running
+        )
 }

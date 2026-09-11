@@ -130,6 +130,20 @@ pub extern "C" fn _start(
     boot::cpu::initialize();
 
     // ---------------------------------------------------------
+    // Scheduler
+    // ---------------------------------------------------------
+
+    let scheduler_runtime =
+        scheduler::SchedulerRuntime::new(
+            &mut allocator,
+        )
+        .expect("failed to initialize scheduler");
+
+    debug::write(
+        b"Scheduler initialized.\r\n"
+    );
+
+    // ---------------------------------------------------------
     // LAPIC
     // ---------------------------------------------------------
 
