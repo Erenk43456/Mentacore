@@ -1,3 +1,4 @@
+use crate::memory::physical::PhysicalFrameAllocator;
 use crate::process::ProcessId;
 
 use super::{
@@ -27,9 +28,13 @@ impl Thread {
     pub fn new(
         tid: ThreadId,
         process_id: ProcessId,
-        kernel_stack: KernelStack,
-    ) -> Self {
-        Self {
+        allocator: &mut PhysicalFrameAllocator,
+    ) -> Result<Self, ()> {
+        let kernel_stack =
+            KernelStack::allocate(allocator)
+                .ok_or(())?;
+
+        Ok(Self {
             tid,
             process_id,
             state: ThreadState::Ready,
@@ -38,7 +43,7 @@ impl Thread {
                 0,
             ),
             kernel_stack,
-        }
+        })
     }
 
     pub fn tid(&self) -> ThreadId {

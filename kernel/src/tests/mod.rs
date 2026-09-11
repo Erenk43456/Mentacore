@@ -69,15 +69,11 @@ impl KernelTestRunner {
         );
     }
 
-    pub fn run_thread(&mut self) {
-        thread::run(&mut self.runner);
-    }
-
-    pub fn run_thread_with_allocator(
+    pub fn run_thread(
         &mut self,
         allocator: &mut PhysicalFrameAllocator,
     ) {
-        thread::run_allocation(
+        thread::run(
             &mut self.runner,
             allocator,
         );

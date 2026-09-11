@@ -1,3 +1,4 @@
+use crate::memory::physical::PhysicalFrameAllocator;
 use crate::thread::{
     KernelStack,
     KERNEL_STACK_ALIGNMENT,
@@ -15,26 +16,36 @@ fn test_stack() -> KernelStack {
     .unwrap()
 }
 
-pub(super) fn test_thread_creation() -> bool {
+pub(super) fn test_thread_creation(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
     let thread =
-        Thread::new(
+        match Thread::new(
             1,
             42,
-            test_stack(),
-        );
+            allocator,
+        ) {
+            Ok(thread) => thread,
+            Err(()) => return false,
+        };
 
     thread.tid() == 1
         && thread.process_id() == 42
         && thread.state() == ThreadState::Ready
 }
 
-pub(super) fn test_thread_state() -> bool {
+pub(super) fn test_thread_state(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
     let mut thread =
-        Thread::new(
+        match Thread::new(
             2,
             42,
-            test_stack(),
-        );
+            allocator,
+        ) {
+            Ok(thread) => thread,
+            Err(()) => return false,
+        };
 
     if thread.state() != ThreadState::Ready {
         return false;
@@ -57,13 +68,18 @@ pub(super) fn test_thread_state() -> bool {
     thread.state() == ThreadState::Terminated
 }
 
-pub(super) fn test_thread_context() -> bool {
+pub(super) fn test_thread_context(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
     let thread =
-        Thread::new(
+        match Thread::new(
             3,
             42,
-            test_stack(),
-        );
+            allocator,
+        ) {
+            Ok(thread) => thread,
+            Err(()) => return false,
+        };
 
     let context =
         thread.context();
@@ -74,20 +90,26 @@ pub(super) fn test_thread_context() -> bool {
         && context.rflags() == 0x202
 }
 
-pub(super) fn test_thread_kernel_stack() -> bool {
-    let stack = test_stack();
-
+pub(super) fn test_thread_kernel_stack(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
     let thread =
-        Thread::new(
+        match Thread::new(
             4,
             42,
-            stack,
-        );
+            allocator,
+        ) {
+            Ok(thread) => thread,
+            Err(()) => return false,
+        };
 
-    thread.kernel_stack().base() == stack.base()
-        && thread.kernel_stack().top() == stack.top()
-        && thread.kernel_stack().size() == stack.size()
-        && thread.context().rsp() == stack.top()
+    thread.kernel_stack().size() == KERNEL_STACK_SIZE
+        && thread.kernel_stack().base()
+            % KERNEL_STACK_ALIGNMENT == 0
+        && thread.kernel_stack().top()
+            % KERNEL_STACK_ALIGNMENT == 0
+        && thread.context().rsp()
+            == thread.kernel_stack().top()
 }
 
 pub(super) fn test_kernel_stack() -> bool {
@@ -134,25 +156,26 @@ pub(super) fn test_kernel_stack_validation() -> bool {
 
 pub(super) fn run(
     runner: &mut super::framework::TestRunner,
+    allocator: &mut PhysicalFrameAllocator,
 ) {
     runner.run(
         b"thread::creation",
-        test_thread_creation,
+        || test_thread_creation(allocator),
     );
 
     runner.run(
         b"thread::state",
-        test_thread_state,
+        || test_thread_state(allocator),
     );
 
     runner.run(
         b"thread::context",
-        test_thread_context,
+        || test_thread_context(allocator),
     );
 
     runner.run(
         b"thread::kernel_stack",
-        test_thread_kernel_stack,
+        || test_thread_kernel_stack(allocator),
     );
 
     runner.run(
@@ -164,21 +187,20 @@ pub(super) fn run(
         b"thread::kernel_stack_validation",
         test_kernel_stack_validation,
     );
-}
 
-pub(super) fn run_allocation(
-    runner: &mut super::framework::TestRunner,
-    allocator: &mut crate::memory::physical::PhysicalFrameAllocator,
-) {
-    let before = allocator.allocated_count();
+    let before =
+        allocator.allocated_count();
 
     let result =
         KernelStack::allocate(allocator)
             .map(|stack| {
-                allocator.allocated_count() == before + KERNEL_STACK_PAGES as u64
+                allocator.allocated_count()
+                    == before + KERNEL_STACK_PAGES as u64
                     && stack.size() == KERNEL_STACK_SIZE
-                    && stack.base() % KERNEL_STACK_ALIGNMENT == 0
-                    && stack.top() % KERNEL_STACK_ALIGNMENT == 0
+                    && stack.base()
+                        % KERNEL_STACK_ALIGNMENT == 0
+                    && stack.top()
+                        % KERNEL_STACK_ALIGNMENT == 0
             })
             .unwrap_or(false);
 
