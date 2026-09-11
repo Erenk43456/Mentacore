@@ -41,17 +41,12 @@ impl KernelStack {
     pub fn allocate(
         allocator: &mut PhysicalFrameAllocator,
     ) -> Option<Self> {
-        let mut first_frame = None;
+        let frame =
+            allocator.allocate_contiguous_frames(
+                KERNEL_STACK_PAGES,
+            )?;
 
-        for index in 0..KERNEL_STACK_PAGES {
-            let frame = allocator.allocate_frame()?;
-
-            if index == 0 {
-                first_frame = Some(frame.start_address);
-            }
-        }
-
-        let base = first_frame?;
+        let base = frame.start_address;
         let top = base + KERNEL_STACK_SIZE;
 
         Self::new(base, top)

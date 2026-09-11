@@ -32,6 +32,11 @@ pub fn run(
         b"physical::invalid_frames",
         || test_invalid_frames(allocator),
     );
+
+    runner.run(
+        b"physical::contiguous_allocation",
+        || test_contiguous_allocation(allocator),
+    );
 }
 
 fn test_frame_free(
@@ -167,4 +172,46 @@ fn test_invalid_frames(
     allocator
         .free_frame(out_of_range)
         .is_err()
+}
+
+fn test_contiguous_allocation(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let before =
+        allocator.allocated_count();
+
+    let first =
+        match allocator.allocate_contiguous_frames(4) {
+            Some(frame) => frame,
+            None => return false,
+        };
+
+    if allocator.allocated_count()
+        != before + 4
+    {
+        return false;
+    }
+
+    let page_size =
+        crate::memory::paging::PAGE_SIZE;
+
+    for index in 0..4u64 {
+        let address =
+            first.start_address
+                + index * page_size;
+
+        let frame =
+            crate::memory::physical::Frame {
+                start_address: address,
+            };
+
+        if !allocator
+            .is_frame_used(frame)
+            .unwrap_or(false)
+        {
+            return false;
+        }
+    }
+
+    true
 }

@@ -95,6 +95,60 @@ impl PhysicalFrameAllocator {
         None
     }
 
+    pub fn allocate_contiguous_frames(
+        &mut self,
+        count: usize,
+    ) -> Option<Frame> {
+        if count == 0 {
+            return None;
+        }
+
+        let frame_count = self.bitmap.frame_count();
+        let count = count as u64;
+
+        if count > frame_count {
+            return None;
+        }
+
+        for start in 0..=frame_count - count {
+            let end = start + count;
+
+            let mut available = true;
+
+            for frame in start..end {
+                if unsafe {
+                    self.bitmap.is_used(frame)
+                } {
+                    available = false;
+                    break;
+                }
+            }
+
+            if !available {
+                continue;
+            }
+
+            for frame in start..end {
+                unsafe {
+                    self.bitmap.set(frame);
+                }
+            }
+
+            self.current_frame =
+                end % frame_count;
+
+            self.live_allocated_frames += count;
+            self.total_allocations += count;
+
+            let address =
+                start.checked_mul(PAGE_SIZE)?;
+
+            return Frame::new(address);
+        }
+
+        None
+    }
+
     pub fn free_frame(
         &mut self,
         frame: Frame,
