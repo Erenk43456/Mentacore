@@ -23,6 +23,7 @@ pub struct Thread {
     state: ThreadState,
     context: KernelContext,
     kernel_stack: KernelStack,
+    interrupt_rsp: u64,
 }
 
 impl Thread {
@@ -49,7 +50,7 @@ impl Thread {
         let stack_pointer =
             kernel_stack.top() - 8;
 
-        Ok(Self {
+        let mut thread = Self {
             tid,
             process_id,
             state: ThreadState::Ready,
@@ -58,7 +59,12 @@ impl Thread {
                 entry as usize as u64,
             ),
             kernel_stack,
-        })
+            interrupt_rsp: 0,
+        };
+
+        thread.prepare_interrupt_context()?;
+
+        Ok(thread)
     }
 
     pub fn tid(&self) -> ThreadId {
@@ -87,5 +93,62 @@ impl Thread {
 
     pub fn set_state(&mut self, state: ThreadState) {
         self.state = state;
+    }
+
+    pub fn interrupt_rsp(&self) -> u64 {
+        self.interrupt_rsp
+    }
+
+    pub fn set_interrupt_rsp(
+        &mut self,
+        rsp: u64,
+    ) {
+        self.interrupt_rsp = rsp;
+    }
+
+    pub fn prepare_interrupt_context(
+        &mut self,
+    ) -> Result<(), ()> {
+        let frame_size =
+            core::mem::size_of::<super::InterruptContext>()
+                as u64;
+
+        /*
+        * Keep the post-iret stack aligned exactly like a
+        * normal kernel thread entry.
+        *
+        * iretq consumes 144 bytes, leaving:
+        *
+        *     RSP = stack_top - 8
+        *
+        * which matches the KernelContext startup ABI.
+        */
+        let frame_address =
+            self.kernel_stack
+                .top()
+                .checked_sub(8)
+                .ok_or(())?
+                .checked_sub(frame_size)
+                .ok_or(())?;
+
+        let frame =
+            super::InterruptContext::new(
+                self.context.rip(),
+                0x08,
+                self.context.rflags(),
+            );
+
+        unsafe {
+            core::ptr::write(
+                frame_address
+                    as *mut super::InterruptContext,
+                frame,
+            );
+        }
+
+        self.interrupt_rsp =
+            frame_address;
+
+        Ok(())
     }
 }

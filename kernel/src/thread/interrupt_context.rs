@@ -52,4 +52,48 @@ impl InterruptContext {
             rflags,
         }
     }
+
+    pub const fn size() -> usize {
+        core::mem::size_of::<Self>()
+    }
 }
+
+const _: () = assert!(
+    core::mem::size_of::<InterruptContext>() == 144
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, r15) == 0
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, r14) == 8
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, r13) == 16
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, r12) == 24
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, rbp) == 32
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, rbx) == 40
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, rip) == 120
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, cs) == 128
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, rflags) == 136
+);

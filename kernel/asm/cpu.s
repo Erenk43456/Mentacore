@@ -90,3 +90,56 @@ context_switch:
     ; Continue execution at next context.
     mov rax, [rsi + 8]
     jmp rax
+
+global interrupt_context_switch
+
+; void interrupt_context_switch(
+;     u64* current_rsp,
+;     const InterruptContext* next
+; )
+;
+; InterruptContext:
+;   +0   r15
+;   +8   r14
+;   +16  r13
+;   +24  r12
+;   +32  rbp
+;   +40  rbx
+;   +48  r11
+;   +56  r10
+;   +64  r9
+;   +72  r8
+;   +80  rdi
+;   +88  rsi
+;   +96  rdx
+;   +104 rcx
+;   +112 rax
+;   +120 rip
+;   +128 cs
+;   +136 rflags
+
+interrupt_context_switch:
+    ; RDI = current_rsp
+    ; RSI = next InterruptContext
+
+    mov [rdi], rsp
+
+    mov rsp, rsi
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbp
+    pop rbx
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rax
+
+    iretq

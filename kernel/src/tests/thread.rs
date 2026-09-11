@@ -7,6 +7,7 @@ use crate::thread::{
     Thread,
     ThreadManager,
     ThreadState,
+    InterruptContext,
 };
 
 extern "C" fn test_thread_entry() -> ! {
@@ -105,6 +106,45 @@ pub(super) fn test_thread_context(
         && context.r13 == 0
         && context.r14 == 0
         && context.r15 == 0
+}
+
+fn test_interrupt_context(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    crate::debug::write(b"[IC] before Thread::new\r\n");
+
+    let thread =
+        match Thread::new(
+            6,
+            42,
+            allocator,
+            test_thread_entry,
+        ) {
+            Ok(thread) => thread,
+            Err(()) => {
+                crate::debug::write(
+                    b"[IC] Thread::new FAILED\r\n",
+                );
+                return false;
+            }
+        };
+
+    crate::debug::write(
+        b"[IC] after Thread::new\r\n",
+    );
+
+    let interrupt_rsp =
+        thread.interrupt_rsp();
+
+    crate::debug::write(
+        b"[IC] interrupt_rsp obtained\r\n",
+    );
+
+    if interrupt_rsp == 0 {
+        return false;
+    }
+
+    true
 }
 
 pub(super) fn test_kernel_context_layout() -> bool {
@@ -372,6 +412,11 @@ pub(super) fn run(
     runner.run(
         b"thread::context",
         || test_thread_context(allocator),
+    );
+
+    runner.run(
+        b"thread::interrupt_context",
+        || test_interrupt_context(allocator),
     );
 
     runner.run(
