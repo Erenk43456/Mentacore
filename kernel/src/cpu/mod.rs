@@ -67,8 +67,25 @@ pub fn init() {
             tss_descriptor,
         );
 
+        gdt::write_gdt_entry(
+            gdt_ptr,
+            5,
+            gdt::GdtEntry::user_code(),
+        );
+
+        gdt::write_gdt_entry(
+            gdt_ptr,
+            6,
+            gdt::GdtEntry::user_data(),
+        );
+
         gdt::load(
             core::ptr::addr_of!(gdt::GDT),
         );
     }
+}
+
+#[cfg(feature = "kernel-tests")]
+pub fn validate_user_segments() -> bool {
+    gdt::validate_user_segments()
 }

@@ -31,6 +31,28 @@ impl GdtEntry {
             base_high: 0,
         }
     }
+
+    pub(super) const fn user_code() -> Self {
+        Self {
+            limit_low: 0xFFFF,
+            base_low: 0,
+            base_middle: 0,
+            access: 0xFA,
+            granularity: 0xAF,
+            base_high: 0,
+        }
+    }
+
+    pub(super) const fn user_data() -> Self {
+        Self {
+            limit_low: 0xFFFF,
+            base_low: 0,
+            base_middle: 0,
+            access: 0xF2,
+            granularity: 0xAF,
+            base_high: 0,
+        }
+    }
 }
 
 #[repr(C, packed)]
@@ -44,15 +66,18 @@ pub(super) const KERNEL_CODE_SELECTOR: u16 = 0x08;
 pub(super) const KERNEL_DATA_SELECTOR: u16 = 0x10;
 pub(super) const TSS_SELECTOR: u16 = 0x18;
 
+pub(super) const USER_CODE_SELECTOR: u16 = 0x2B;
+pub(super) const USER_DATA_SELECTOR: u16 = 0x33;
+
 #[repr(align(16))]
 pub(super) struct Gdt {
-    pub(super) entries: [u64; 5],
+    pub(super) entries: [u64; 7],
 }
 
 impl Gdt {
     pub(super) const fn new() -> Self {
         Self {
-            entries: [0; 5],
+            entries: [0; 7],
         }
     }
 }
@@ -73,7 +98,18 @@ pub(super) unsafe fn write_gdt_entry(
         | ((entry.base_high as u64) << 56);
 
     unsafe {
-        (*gdt).entries[index] = value;
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!((*gdt).entries[index]),
+            value,
+        );
+
+        let readback =
+            core::ptr::read_volatile(
+                core::ptr::addr_of!((*gdt).entries[index]),
+            );
+
+        crate::debug::write_hex(readback);
+        crate::debug::write(b"\r\n");
     }
 }
 
@@ -91,11 +127,16 @@ pub(super) unsafe fn write_tss_descriptor(
         | ((descriptor.base_high as u64) << 56);
 
     unsafe {
-        (*gdt).entries[index] = low;
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!((*gdt).entries[index]),
+            low,
+        );
 
-        (*gdt).entries[index + 1] =
+        core::ptr::write_volatile(
+            core::ptr::addr_of_mut!((*gdt).entries[index + 1]),
             (descriptor.base_upper as u64)
-            | ((descriptor.reserved as u64) << 32);
+                | ((descriptor.reserved as u64) << 32),
+        );
     }
 }
 
@@ -154,4 +195,29 @@ pub(super) unsafe fn load(gdt: *const Gdt) {
             options(nostack, preserves_flags)
         );
     }
+}
+
+#[cfg(feature = "kernel-tests")]
+pub(super) fn validate_user_segments() -> bool {
+    let user_code = unsafe {
+        (*core::ptr::addr_of!(GDT))
+            .entries[5]
+    };
+
+    let user_data = unsafe {
+        (*core::ptr::addr_of!(GDT))
+            .entries[6]
+    };
+
+    crate::debug::write_hex(user_code);
+    crate::debug::write(b"\r\n");
+
+    crate::debug::write_hex(user_data);
+    crate::debug::write(b"\r\n");
+
+    let code_access = ((user_code >> 40) & 0xFF) as u8;
+    let data_access = ((user_data >> 40) & 0xFF) as u8;
+
+    code_access == 0xFA
+        && data_access == 0xF2
 }

@@ -177,6 +177,7 @@ pub extern "C" fn _start(
         test_runner.run_heap();
         test_runner.run_sync();
         test_runner.run_tsc();
+        test_runner.run_cpu();
         test_runner.run_interrupts(&lapic);
         test_runner.finish();
     }
