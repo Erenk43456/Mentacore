@@ -4,6 +4,7 @@
 mod boot;
 mod boot_state;
 mod cpu;
+mod process;
 mod debug;
 mod display;
 mod interrupts;
@@ -94,6 +95,11 @@ pub extern "C" fn _start(
 
     #[cfg(feature = "kernel-tests")]
     test_runner.run_paging(
+        &mut allocator
+    );
+
+    #[cfg(feature = "kernel-tests")]
+    test_runner.run_process(
         &mut allocator
     );
 
