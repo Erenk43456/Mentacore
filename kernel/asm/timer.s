@@ -16,6 +16,8 @@ global lapic_timer_entry
 ; ------------------------------------------------------------
 
 timer_irq_entry:
+    cli
+
     push rax
     push rcx
     push rdx
@@ -25,23 +27,35 @@ timer_irq_entry:
     push r9
     push r10
     push r11
+    push rbx
+    push rbp
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov rdi, rsp
 
     test rsp, 8
     jz .timer_dispatch_aligned
 
     sub rsp, 8
 
-    mov rdi, rsp
     call timer_irq_dispatch
 
     add rsp, 8
     jmp .timer_dispatch_done
 
 .timer_dispatch_aligned:
-    mov rdi, rsp
     call timer_irq_dispatch
 
 .timer_dispatch_done:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbp
+    pop rbx
     pop r11
     pop r10
     pop r9
@@ -60,6 +74,8 @@ timer_irq_entry:
 ; ------------------------------------------------------------
 
 lapic_timer_entry:
+    cli
+
     push rax
     push rcx
     push rdx
@@ -69,23 +85,35 @@ lapic_timer_entry:
     push r9
     push r10
     push r11
+    push rbx
+    push rbp
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov rdi, rsp
 
     test rsp, 8
     jz .lapic_timer_dispatch_aligned
 
     sub rsp, 8
 
-    mov rdi, rsp
     call lapic_timer_dispatch
 
     add rsp, 8
     jmp .lapic_timer_dispatch_done
 
 .lapic_timer_dispatch_aligned:
-    mov rdi, rsp
     call lapic_timer_dispatch
 
 .lapic_timer_dispatch_done:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbp
+    pop rbx
     pop r11
     pop r10
     pop r9

@@ -104,6 +104,11 @@ pub fn lapic_timer_ticks() -> u64 {
     timer::lapic_timer_ticks()
 }
 
+#[cfg(feature = "kernel-tests")]
+pub fn validate_interrupt_context_layout() -> bool {
+    timer::validate_interrupt_context_layout()
+}
+
 pub unsafe fn init(
     allocator: PhysicalFrameAllocator,
 ) {

@@ -1,4 +1,5 @@
 mod context;
+mod interrupt_context;
 mod manager;
 mod stack;
 mod thread;
@@ -7,6 +8,8 @@ pub use context::{
     context_switch,
     KernelContext,
 };
+
+pub use interrupt_context::InterruptContext;
 
 pub use manager::{
     ThreadManager,

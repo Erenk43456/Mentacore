@@ -1,5 +1,7 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use crate::thread::InterruptContext;
+
 pub const LAPIC_TIMER_VECTOR: u8 = 0x40;
 
 static TIMER_TICKS: AtomicU64 =
@@ -59,7 +61,19 @@ extern "C" fn lapic_timer_dispatch(
     #[cfg(not(feature = "kernel-tests"))]
     let _ = dispatch_rsp;
 
+    /*
+     * The frame is currently consumed by the timer
+     * entry/exit path. Scheduler preemption will use
+     * this frame in the next step.
+     */
+    let _ = dispatch_rsp;
+
     unsafe {
         crate::hardware::lapic::write_global_eoi();
     }
+}
+
+#[cfg(feature = "kernel-tests")]
+pub fn validate_interrupt_context_layout() -> bool {
+    core::mem::size_of::<InterruptContext>() == 18 * 8
 }

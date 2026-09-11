@@ -36,6 +36,11 @@ pub fn run(
     );
 
     runner.run(
+        b"interrupts::timer_context",
+        || crate::interrupts::validate_interrupt_context_layout(),
+    );
+
+    runner.run(
         b"interrupts::double_fault_ist1",
         ist::test_double_fault_ist1,
     );
