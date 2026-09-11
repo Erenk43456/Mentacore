@@ -1,6 +1,9 @@
 use crate::process::ProcessId;
 
-use super::KernelContext;
+use super::{
+    KernelContext,
+    KernelStack,
+};
 
 pub type ThreadId = u64;
 
@@ -17,18 +20,24 @@ pub struct Thread {
     process_id: ProcessId,
     state: ThreadState,
     context: KernelContext,
+    kernel_stack: KernelStack,
 }
 
 impl Thread {
     pub fn new(
         tid: ThreadId,
         process_id: ProcessId,
+        kernel_stack: KernelStack,
     ) -> Self {
         Self {
             tid,
             process_id,
             state: ThreadState::Ready,
-            context: KernelContext::new(0, 0),
+            context: KernelContext::new(
+                kernel_stack.top(),
+                0,
+            ),
+            kernel_stack,
         }
     }
 
@@ -46,6 +55,10 @@ impl Thread {
 
     pub fn context(&self) -> &KernelContext {
         &self.context
+    }
+
+    pub fn kernel_stack(&self) -> &KernelStack {
+        &self.kernel_stack
     }
 
     pub fn set_state(&mut self, state: ThreadState) {

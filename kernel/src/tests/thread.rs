@@ -1,13 +1,25 @@
 use crate::thread::{
-    Thread,
-    ThreadState,
     KernelStack,
     KERNEL_STACK_SIZE,
+    Thread,
+    ThreadState,
 };
+
+fn test_stack() -> KernelStack {
+    KernelStack::new(
+        0x0010_0000,
+        0x0010_0000 + KERNEL_STACK_SIZE,
+    )
+    .unwrap()
+}
 
 pub(super) fn test_thread_creation() -> bool {
     let thread =
-        Thread::new(1, 42);
+        Thread::new(
+            1,
+            42,
+            test_stack(),
+        );
 
     thread.tid() == 1
         && thread.process_id() == 42
@@ -16,7 +28,11 @@ pub(super) fn test_thread_creation() -> bool {
 
 pub(super) fn test_thread_state() -> bool {
     let mut thread =
-        Thread::new(2, 42);
+        Thread::new(
+            2,
+            42,
+            test_stack(),
+        );
 
     if thread.state() != ThreadState::Ready {
         return false;
@@ -39,45 +55,37 @@ pub(super) fn test_thread_state() -> bool {
     thread.state() == ThreadState::Terminated
 }
 
-pub(super) fn run(
-    runner: &mut super::framework::TestRunner,
-) {
-    runner.run(
-        b"thread::creation",
-        test_thread_creation,
-    );
-
-    runner.run(
-        b"thread::state",
-        test_thread_state,
-    );
-
-    runner.run(
-        b"thread::context",
-        test_thread_context,
-    );
-
-    runner.run(
-        b"thread::kernel_stack",
-        test_kernel_stack,
-    );
-
-    runner.run(
-        b"thread::kernel_stack_validation",
-        test_kernel_stack_validation,
-    );
-}
-
 pub(super) fn test_thread_context() -> bool {
     let thread =
-        Thread::new(3, 42);
+        Thread::new(
+            3,
+            42,
+            test_stack(),
+        );
 
     let context =
         thread.context();
 
-    context.rsp() == 0
+    context.rsp()
+        == thread.kernel_stack().top()
         && context.rip() == 0
         && context.rflags() == 0x202
+}
+
+pub(super) fn test_thread_kernel_stack() -> bool {
+    let stack = test_stack();
+
+    let thread =
+        Thread::new(
+            4,
+            42,
+            stack,
+        );
+
+    thread.kernel_stack().base() == stack.base()
+        && thread.kernel_stack().top() == stack.top()
+        && thread.kernel_stack().size() == stack.size()
+        && thread.context().rsp() == stack.top()
 }
 
 pub(super) fn test_kernel_stack() -> bool {
@@ -120,4 +128,38 @@ pub(super) fn test_kernel_stack_validation() -> bool {
     }
 
     true
+}
+
+pub(super) fn run(
+    runner: &mut super::framework::TestRunner,
+) {
+    runner.run(
+        b"thread::creation",
+        test_thread_creation,
+    );
+
+    runner.run(
+        b"thread::state",
+        test_thread_state,
+    );
+
+    runner.run(
+        b"thread::context",
+        test_thread_context,
+    );
+
+    runner.run(
+        b"thread::kernel_stack",
+        test_thread_kernel_stack,
+    );
+
+    runner.run( 
+        b"thread::kernel_stack_direct", 
+        test_kernel_stack, 
+    );
+
+    runner.run(
+        b"thread::kernel_stack_validation",
+        test_kernel_stack_validation,
+    );
 }
