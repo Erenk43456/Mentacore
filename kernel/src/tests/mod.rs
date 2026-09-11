@@ -7,6 +7,7 @@ mod tsc;
 pub mod interrupts;
 mod cpu;
 mod process;
+mod thread;
 
 use crate::debug;
 use crate::memory::physical::PhysicalFrameAllocator;
@@ -66,6 +67,10 @@ impl KernelTestRunner {
             &mut self.runner,
             allocator,
         );
+    }
+
+    pub fn run_thread(&mut self) {
+        thread::run(&mut self.runner);
     }
 
     pub fn run_interrupts(

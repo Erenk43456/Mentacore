@@ -5,6 +5,7 @@ mod boot;
 mod boot_state;
 mod cpu;
 mod process;
+mod thread;
 mod debug;
 mod display;
 mod interrupts;
@@ -102,6 +103,9 @@ pub extern "C" fn _start(
     test_runner.run_process(
         &mut allocator
     );
+
+    #[cfg(feature = "kernel-tests")]
+    test_runner.run_thread();
 
     // ---------------------------------------------------------
     // Heap
