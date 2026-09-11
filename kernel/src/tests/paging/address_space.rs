@@ -1,7 +1,9 @@
 use crate::memory;
 use crate::memory::physical::PhysicalFrameAllocator;
 
-pub(super) fn test_address_space_abstraction() -> bool {
+pub(super) fn test_address_space_abstraction(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
     let pml4 =
         unsafe {
             memory::paging::current_pml4()
@@ -12,7 +14,31 @@ pub(super) fn test_address_space_abstraction() -> bool {
             memory::paging::AddressSpace::from_pml4(pml4)
         };
 
-    address_space.pml4() == pml4
+    if address_space.pml4() != pml4 {
+        return false;
+    }
+
+    let new_address_space =
+        unsafe {
+            match memory::paging::AddressSpace::new(allocator) {
+                Ok(address_space) => address_space,
+                Err(()) => return false,
+            }
+        };
+
+    let new_pml4 = new_address_space.pml4();
+
+    if new_pml4.is_null() {
+        return false;
+    }
+
+    if unsafe {
+        !memory::paging::test_page_table_empty(new_pml4)
+    } {
+        return false;
+    }
+
+    true
 }
 
 pub(super) fn test_address_space_mapping(

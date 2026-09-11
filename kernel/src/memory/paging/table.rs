@@ -42,6 +42,12 @@ pub(super) unsafe fn allocate_table(
     Ok((frame.start_address, table))
 }
 
+pub(super) unsafe fn allocate_pml4(
+    allocator: &mut PhysicalFrameAllocator,
+) -> Result<(u64, *mut PageTable), ()> {
+    unsafe { allocate_table(allocator) }
+}
+
 pub(super) unsafe fn create_page_tables(
     allocator: &mut PhysicalFrameAllocator,
 ) -> Result<(*mut PageTable, u64, [*mut PageTable; 4]), ()> {

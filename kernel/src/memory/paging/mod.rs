@@ -247,6 +247,21 @@ unsafe fn validate_initial_mapping(
 }
 
 #[cfg(feature = "kernel-tests")]
+pub unsafe fn test_page_table_empty(
+    page_table: *mut PageTable,
+) -> bool {
+    unsafe {
+        for entry in &(*page_table).entries {
+            if *entry != 0 {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+#[cfg(feature = "kernel-tests")]
 pub unsafe fn test_entry(
     pml4: *mut PageTable,
     virtual_address: u64,

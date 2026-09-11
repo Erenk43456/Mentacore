@@ -10,6 +10,15 @@ pub struct AddressSpace {
 }
 
 impl AddressSpace {
+    pub unsafe fn new(
+        allocator: &mut PhysicalFrameAllocator,
+    ) -> Result<Self, ()> {
+        let (_, pml4) =
+            unsafe { super::table::allocate_pml4(allocator)? };
+
+        Ok(Self { pml4 })
+    }
+
     pub unsafe fn from_pml4(
         pml4: *mut PageTable,
     ) -> Self {

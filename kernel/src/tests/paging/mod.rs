@@ -42,7 +42,7 @@ pub fn run(
 
     runner.run(
         b"paging::address_space",
-        address_space::test_address_space_abstraction,
+        || address_space::test_address_space_abstraction(allocator),
     );
 
     runner.run(
