@@ -9,6 +9,12 @@ use crate::thread::{
     ThreadState,
 };
 
+extern "C" fn test_thread_entry() -> ! {
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
 fn test_stack() -> KernelStack {
     KernelStack::new(
         0x0010_0000,
@@ -25,6 +31,7 @@ pub(super) fn test_thread_creation(
             1,
             42,
             allocator,
+            test_thread_entry,
         ) {
             Ok(thread) => thread,
             Err(()) => return false,
@@ -43,6 +50,7 @@ pub(super) fn test_thread_state(
             2,
             42,
             allocator,
+            test_thread_entry,
         ) {
             Ok(thread) => thread,
             Err(()) => return false,
@@ -77,6 +85,7 @@ pub(super) fn test_thread_context(
             3,
             42,
             allocator,
+            test_thread_entry,
         ) {
             Ok(thread) => thread,
             Err(()) => return false,
@@ -86,8 +95,9 @@ pub(super) fn test_thread_context(
         thread.context();
 
     context.rsp()
-        == thread.kernel_stack().top()
-        && context.rip() == 0
+        == thread.kernel_stack().top() - 8
+        && context.rip()
+            == test_thread_entry as usize as u64
         && context.rflags() == 0x202
         && context.rbx == 0
         && context.rbp == 0
@@ -137,6 +147,32 @@ extern "C" fn context_switch_test_target() -> ! {
         crate::thread::context_switch(
             &raw mut CONTEXT_SWITCH_NEXT,
             &raw const CONTEXT_SWITCH_CURRENT,
+        );
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+static mut THREAD_STARTUP_CURRENT:
+    crate::thread::KernelContext =
+    crate::thread::KernelContext::new(0, 0);
+
+static mut THREAD_STARTUP_CONTEXT:
+    crate::thread::KernelContext =
+    crate::thread::KernelContext::new(0, 0);
+
+static mut THREAD_STARTUP_REACHED: bool = false;
+
+#[unsafe(no_mangle)]
+extern "C" fn thread_startup_entry() -> ! {
+    unsafe {
+        THREAD_STARTUP_REACHED = true;
+
+        crate::thread::context_switch(
+            &raw mut THREAD_STARTUP_CONTEXT,
+            &raw const THREAD_STARTUP_CURRENT,
         );
     }
 
@@ -219,6 +255,41 @@ pub(super) fn test_context_switch() -> bool {
     }
 }
 
+pub(super) fn test_thread_context_startup(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let thread =
+        match Thread::new(
+            5,
+            42,
+            allocator,
+            thread_startup_entry,
+        ) {
+            Ok(thread) => thread,
+            Err(()) => return false,
+        };
+
+    unsafe {
+        THREAD_STARTUP_REACHED = false;
+
+        THREAD_STARTUP_CURRENT =
+            crate::thread::KernelContext::new(
+                0,
+                0,
+            );
+
+        THREAD_STARTUP_CONTEXT =
+            *thread.context();
+
+        crate::thread::context_switch(
+            &raw mut THREAD_STARTUP_CURRENT,
+            &raw const THREAD_STARTUP_CONTEXT,
+        );
+
+        THREAD_STARTUP_REACHED
+    }
+}
+
 pub(super) fn test_thread_kernel_stack(
     allocator: &mut PhysicalFrameAllocator,
 ) -> bool {
@@ -227,6 +298,7 @@ pub(super) fn test_thread_kernel_stack(
             4,
             42,
             allocator,
+            test_thread_entry,
         ) {
             Ok(thread) => thread,
             Err(()) => return false,
@@ -238,7 +310,7 @@ pub(super) fn test_thread_kernel_stack(
         && thread.kernel_stack().top()
             % KERNEL_STACK_ALIGNMENT == 0
         && thread.context().rsp()
-            == thread.kernel_stack().top()
+            == thread.kernel_stack().top() - 8
 }
 
 pub(super) fn test_kernel_stack() -> bool {
@@ -313,6 +385,11 @@ pub(super) fn run(
     );
 
     runner.run(
+        b"thread::context_startup",
+        || test_thread_context_startup(allocator),
+    );
+
+    runner.run(
         b"thread::kernel_stack",
         || test_thread_kernel_stack(allocator),
     );
@@ -372,15 +449,30 @@ pub(super) fn test_thread_manager_operations(
     let mut manager =
         crate::thread::ThreadManager::new();
 
-    if manager.create(1, 42, allocator).is_err() {
+    if manager.create(
+        1,
+        42,
+        allocator,
+        test_thread_entry,
+    ).is_err() {
         return false;
     }
 
-    if manager.create(2, 42, allocator).is_err() {
+    if manager.create(
+        2,
+        42,
+        allocator,
+        test_thread_entry,
+    ).is_err() {
         return false;
     }
 
-    if manager.create(1, 42, allocator).is_ok() {
+    if manager.create(
+        1,
+        42,
+        allocator,
+        test_thread_entry,
+    ).is_ok() {
         return false;
     }
 

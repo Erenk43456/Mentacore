@@ -22,6 +22,7 @@ pub use stack::{
 
 pub use thread::{
     Thread,
-    ThreadId,
+    ThreadEntry,
     ThreadState,
+    ThreadId,
 };

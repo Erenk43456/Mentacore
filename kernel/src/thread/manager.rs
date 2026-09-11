@@ -1,5 +1,6 @@
 use super::{
     Thread,
+    ThreadEntry,
     ThreadId,
 };
 
@@ -26,6 +27,7 @@ impl ThreadManager {
         thread_id: ThreadId,
         process_id: ProcessId,
         allocator: &mut PhysicalFrameAllocator,
+        entry: ThreadEntry,
     ) -> Result<(), ()> {
         if self.count >= MAX_THREADS {
             return Err(());
@@ -40,6 +42,7 @@ impl ThreadManager {
                 thread_id,
                 process_id,
                 allocator,
+                entry,
             )?;
 
         for slot in self.threads.iter_mut() {

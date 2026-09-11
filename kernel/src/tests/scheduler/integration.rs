@@ -2,13 +2,24 @@ use crate::memory::physical::PhysicalFrameAllocator;
 use crate::scheduler::Scheduler;
 use crate::thread::ThreadManager;
 
+extern "C" fn scheduler_test_entry() -> ! {
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
 pub(super) fn scheduler_accepts_managed_thread(
     allocator: &mut PhysicalFrameAllocator,
 ) -> bool {
     let mut manager = ThreadManager::new();
     let mut scheduler = Scheduler::new();
 
-    if manager.create(1, 42, allocator).is_err() {
+    if manager.create(
+        1,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
         return false;
     }
 
@@ -41,15 +52,30 @@ pub(super) fn scheduler_selects_managed_threads(
     let mut manager = ThreadManager::new();
     let mut scheduler = Scheduler::new();
 
-    if manager.create(1, 42, allocator).is_err() {
+    if manager.create(
+        1,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
         return false;
     }
 
-    if manager.create(2, 42, allocator).is_err() {
+    if manager.create(
+        2,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
         return false;
     }
 
-    if manager.create(3, 42, allocator).is_err() {
+    if manager.create(
+        3,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
         return false;
     }
 
@@ -80,11 +106,21 @@ pub(super) fn scheduler_manages_thread_states(
     let mut scheduler =
         Scheduler::new();
 
-    if manager.create(1, 42, allocator).is_err() {
+    if manager.create(
+        1,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
         return false;
     }
 
-    if manager.create(2, 42, allocator).is_err() {
+    if manager.create(
+        2,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
         return false;
     }
 
