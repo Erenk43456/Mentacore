@@ -43,6 +43,50 @@ impl Scheduler {
         self.add(thread_id)
     }
 
+    pub fn start(
+        &mut self,
+        manager: &mut ThreadManager,
+    ) -> Option<ThreadId> {
+        let current = self.current()?;
+
+        if let Some(thread) = manager.get_mut(current) {
+            thread.set_state(
+                crate::thread::ThreadState::Running
+            );
+        }
+
+        Some(current)
+    }
+
+    pub fn schedule_next(
+        &mut self,
+        manager: &mut ThreadManager,
+    ) -> Option<ThreadId> {
+        let previous = self.current();
+
+        let next = self.next()?;
+
+        if let Some(previous) = previous {
+            if previous != next {
+                if let Some(thread) =
+                    manager.get_mut(previous)
+                {
+                    thread.set_state(
+                        crate::thread::ThreadState::Ready
+                    );
+                }
+            }
+        }
+
+        if let Some(thread) = manager.get_mut(next) {
+            thread.set_state(
+                crate::thread::ThreadState::Running
+            );
+        }
+
+        Some(next)
+    }
+
     pub fn remove(
         &mut self,
         thread_id: ThreadId,

@@ -3,6 +3,7 @@ mod integration;
 mod queue;
 mod round_robin;
 
+use crate::tests::scheduler::integration::scheduler_manages_thread_states;
 use crate::memory::physical::PhysicalFrameAllocator;
 
 use super::framework::TestRunner;
@@ -69,5 +70,12 @@ pub(super) fn run(
     runner.run(
         b"scheduler::managed_thread_selection",
         || integration::scheduler_selects_managed_threads(allocator),
+    );
+
+    runner.run(
+        b"scheduler::thread_states",
+        || {
+            scheduler_manages_thread_states(allocator)
+        },
     );
 }

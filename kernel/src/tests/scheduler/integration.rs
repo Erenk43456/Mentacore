@@ -70,3 +70,83 @@ pub(super) fn scheduler_selects_managed_threads(
         && scheduler.next() == Some(3)
         && scheduler.next() == Some(1)
 }
+
+pub(super) fn scheduler_manages_thread_states(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let mut manager =
+        ThreadManager::new();
+
+    let mut scheduler =
+        Scheduler::new();
+
+    if manager.create(1, 42, allocator).is_err() {
+        return false;
+    }
+
+    if manager.create(2, 42, allocator).is_err() {
+        return false;
+    }
+
+    if scheduler
+        .add_thread(&manager, 1)
+        .is_err()
+    {
+        return false;
+    }
+
+    if scheduler
+        .add_thread(&manager, 2)
+        .is_err()
+    {
+        return false;
+    }
+
+    if scheduler.start(&mut manager) != Some(1) {
+        return false;
+    }
+
+    if manager
+        .get(1)
+        .map(|thread| {
+            thread.state()
+                == crate::thread::ThreadState::Running
+        })
+        != Some(true)
+    {
+        return false;
+    }
+
+    if manager
+        .get(2)
+        .map(|thread| {
+            thread.state()
+                == crate::thread::ThreadState::Ready
+        })
+        != Some(true)
+    {
+        return false;
+    }
+
+    if scheduler.schedule_next(&mut manager)
+        != Some(2)
+    {
+        return false;
+    }
+
+    manager
+        .get(1)
+        .map(|thread| {
+            thread.state()
+                == crate::thread::ThreadState::Ready
+        })
+        == Some(true)
+        &&
+    manager
+        .get(2)
+        .map(|thread| {
+            thread.state()
+                == crate::thread::ThreadState::Running
+        })
+        == Some(true)
+}
