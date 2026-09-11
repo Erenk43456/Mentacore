@@ -114,6 +114,110 @@ pub(super) fn test_kernel_context_layout() -> bool {
         && offset_of!(crate::thread::KernelContext, r15) == 64
 }
 
+static mut CONTEXT_SWITCH_CURRENT: crate::thread::KernelContext =
+    crate::thread::KernelContext::new(0, 0);
+
+static mut CONTEXT_SWITCH_NEXT: crate::thread::KernelContext =
+    crate::thread::KernelContext::new(0, 0);
+
+static mut CONTEXT_SWITCH_STACK: [u8; 4096] = [0; 4096];
+
+static mut CONTEXT_SWITCH_RETURNED: bool = false;
+
+unsafe extern "C" {
+    fn context_switch_test_trampoline();
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn context_switch_test_target() -> ! {
+    unsafe {
+        CONTEXT_SWITCH_RETURNED = true;
+
+        crate::thread::context_switch(
+            &raw mut CONTEXT_SWITCH_NEXT,
+            &raw const CONTEXT_SWITCH_CURRENT,
+        );
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+pub(super) fn test_context_switch() -> bool {
+    let stack_base =
+        core::ptr::addr_of!(CONTEXT_SWITCH_STACK)
+            as *const u8;
+
+    let stack_top =
+        stack_base.wrapping_add(4096) as u64;
+
+    /*
+     * The trampoline executes CALL, so RSP must be
+     * 16-byte aligned before the CALL.
+     */
+    let stack_pointer =
+        stack_top & !0xF;
+
+    let trampoline =
+        context_switch_test_trampoline
+            as *const ()
+            as usize
+            as u64;
+
+    unsafe {
+        CONTEXT_SWITCH_RETURNED = false;
+
+        CONTEXT_SWITCH_CURRENT =
+            crate::thread::KernelContext::new(
+                0,
+                0,
+            );
+
+        CONTEXT_SWITCH_NEXT =
+            crate::thread::KernelContext::new(
+                stack_pointer,
+                trampoline,
+            );
+
+        let current_ptr =
+            core::ptr::addr_of!(CONTEXT_SWITCH_CURRENT);
+
+        let next_ptr =
+            core::ptr::addr_of!(CONTEXT_SWITCH_NEXT);
+
+        crate::debug::write(b"CURRENT RSP: ");
+        crate::debug::write_hex(
+            unsafe { core::ptr::read(core::ptr::addr_of!((*current_ptr).rsp)) },
+        );
+
+        crate::debug::write(b"CURRENT RIP: ");
+        crate::debug::write_hex(
+            unsafe { core::ptr::read(core::ptr::addr_of!((*current_ptr).rip)) },
+        );
+
+        crate::debug::write(b"NEXT RSP: ");
+        crate::debug::write_hex(
+            unsafe { core::ptr::read(core::ptr::addr_of!((*next_ptr).rsp)) },
+        );
+
+        crate::debug::write(b"NEXT RIP: ");
+        crate::debug::write_hex(
+            unsafe { core::ptr::read(core::ptr::addr_of!((*next_ptr).rip)) },
+        );
+
+        crate::debug::write(b"TRAMPOLINE: ");
+        crate::debug::write_hex(trampoline);
+
+        crate::thread::context_switch(
+            &raw mut CONTEXT_SWITCH_CURRENT,
+            &raw const CONTEXT_SWITCH_NEXT,
+        );
+
+        CONTEXT_SWITCH_RETURNED
+    }
+}
+
 pub(super) fn test_thread_kernel_stack(
     allocator: &mut PhysicalFrameAllocator,
 ) -> bool {
@@ -200,6 +304,11 @@ pub(super) fn run(
     runner.run(
         b"thread::kernel_context_layout",
         test_kernel_context_layout,
+    );
+
+    runner.run(
+        b"thread::context_switch",
+        test_context_switch,
     );
 
     runner.run(

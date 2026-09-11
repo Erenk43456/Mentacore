@@ -2,7 +2,10 @@ mod context;
 mod stack;
 mod thread;
 
-pub use context::KernelContext;
+pub use context::{
+    context_switch,
+    KernelContext,
+};
 
 pub use stack::{
     KernelStack,

@@ -55,10 +55,16 @@ context_switch:
     mov [rdi + 56], r14
     mov [rdi + 64], r15
 
-    ; Save current stack pointer.
-    mov [rdi + 0], rsp
+    ; Save the post-return stack pointer.
+    ;
+    ; The return address at [rsp] belongs to this
+    ; context_switch call. When this context is
+    ; restored, execution jumps directly to that
+    ; return address, so RSP must point past it.
+    lea rax, [rsp + 8]
+    mov [rdi + 0], rax
 
-    ; Save return address as the instruction pointer.
+    ; Save the return address as the instruction pointer.
     mov rax, [rsp]
     mov [rdi + 8], rax
 
@@ -84,3 +90,14 @@ context_switch:
     ; Continue execution at next context.
     mov rax, [rsi + 8]
     jmp rax
+
+extern context_switch_test_target
+
+global context_switch_test_trampoline
+
+context_switch_test_trampoline:
+    call context_switch_test_target
+
+    ; The test target must never return.
+
+    hlt
