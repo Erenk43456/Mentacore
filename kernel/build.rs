@@ -36,11 +36,15 @@ fn main() {
         asm_dir.join("common.inc").display()
     );
 
-    let sources = [
+    let mut sources = vec![
         ("exceptions.s", "exceptions.o"),
         ("timer.s", "timer.o"),
         ("cpu.s", "cpu.o"),
     ];
+
+    if env::var_os("CARGO_FEATURE_KERNEL_TESTS").is_some() {
+        sources.push(("tests.s", "tests.o"));
+    }
 
     for (source_name, object_name) in sources {
         let source = asm_dir.join(source_name);
