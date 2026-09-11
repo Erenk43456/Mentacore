@@ -88,6 +88,12 @@ pub(super) fn test_thread_context(
         == thread.kernel_stack().top()
         && context.rip() == 0
         && context.rflags() == 0x202
+        && context.rbx == 0
+        && context.rbp == 0
+        && context.r12 == 0
+        && context.r13 == 0
+        && context.r14 == 0
+        && context.r15 == 0
 }
 
 pub(super) fn test_thread_kernel_stack(
