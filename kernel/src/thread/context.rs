@@ -44,3 +44,10 @@ impl KernelContext {
         self.rflags
     }
 }
+
+unsafe extern "C" {
+    pub fn context_switch(
+        current: *mut KernelContext,
+        next: *const KernelContext,
+    );
+}

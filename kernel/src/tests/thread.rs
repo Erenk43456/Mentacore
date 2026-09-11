@@ -96,6 +96,24 @@ pub(super) fn test_thread_context(
         && context.r15 == 0
 }
 
+pub(super) fn test_kernel_context_layout() -> bool {
+    use core::mem::{
+        size_of,
+        offset_of,
+    };
+
+    size_of::<crate::thread::KernelContext>() == 72
+        && offset_of!(crate::thread::KernelContext, rsp) == 0
+        && offset_of!(crate::thread::KernelContext, rip) == 8
+        && offset_of!(crate::thread::KernelContext, rflags) == 16
+        && offset_of!(crate::thread::KernelContext, rbx) == 24
+        && offset_of!(crate::thread::KernelContext, rbp) == 32
+        && offset_of!(crate::thread::KernelContext, r12) == 40
+        && offset_of!(crate::thread::KernelContext, r13) == 48
+        && offset_of!(crate::thread::KernelContext, r14) == 56
+        && offset_of!(crate::thread::KernelContext, r15) == 64
+}
+
 pub(super) fn test_thread_kernel_stack(
     allocator: &mut PhysicalFrameAllocator,
 ) -> bool {
@@ -177,6 +195,11 @@ pub(super) fn run(
     runner.run(
         b"thread::context",
         || test_thread_context(allocator),
+    );
+
+    runner.run(
+        b"thread::kernel_context_layout",
+        test_kernel_context_layout,
     );
 
     runner.run(
