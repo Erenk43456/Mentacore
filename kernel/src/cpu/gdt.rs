@@ -199,25 +199,29 @@ pub(super) unsafe fn load(gdt: *const Gdt) {
 
 #[cfg(feature = "kernel-tests")]
 pub(super) fn validate_user_segments() -> bool {
-    let user_code = unsafe {
-        (*core::ptr::addr_of!(GDT))
-            .entries[5]
+    let gdt = unsafe {
+        &*core::ptr::addr_of!(GDT)
     };
 
-    let user_data = unsafe {
-        (*core::ptr::addr_of!(GDT))
-            .entries[6]
-    };
+    let kernel_code = gdt.entries[1];
+    let kernel_data = gdt.entries[2];
+    let user_code = gdt.entries[5];
+    let user_data = gdt.entries[6];
 
-    crate::debug::write_hex(user_code);
-    crate::debug::write(b"\r\n");
+    let kernel_code_access =
+        ((kernel_code >> 40) & 0xFF) as u8;
 
-    crate::debug::write_hex(user_data);
-    crate::debug::write(b"\r\n");
+    let kernel_data_access =
+        ((kernel_data >> 40) & 0xFF) as u8;
 
-    let code_access = ((user_code >> 40) & 0xFF) as u8;
-    let data_access = ((user_data >> 40) & 0xFF) as u8;
+    let user_code_access =
+        ((user_code >> 40) & 0xFF) as u8;
 
-    code_access == 0xFA
-        && data_access == 0xF2
+    let user_data_access =
+        ((user_data >> 40) & 0xFF) as u8;
+
+    (kernel_code_access & 0xFE) == 0x9A
+        && (kernel_data_access & 0xFE) == 0x92
+        && (user_code_access & 0xFE) == 0xFA
+        && (user_data_access & 0xFE) == 0xF2
 }
