@@ -201,6 +201,9 @@ pub extern "C" fn _start(
     }
 
     #[cfg(feature = "kernel-tests")]
+    test_runner.run_ring3_user_buffer_validation();
+
+    #[cfg(feature = "kernel-tests")]
     test_runner.run_ring3_transition();
 
     // ---------------------------------------------------------

@@ -15,4 +15,7 @@ pub use result::{
     SYSCALL_OK,
     SyscallResult,
 };
-pub use user::validate_user_address;
+pub use user::{
+    validate_user_address,
+    validate_user_buffer,
+};

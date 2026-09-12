@@ -7,6 +7,7 @@ use core::sync::atomic::{
 use crate::debug;
 use crate::memory;
 use crate::memory::physical::PhysicalFrameAllocator;
+use crate::syscall::validate_user_buffer;
 
 const USER_CODE_VADDR: u64 =
     0x0000_0100_0000_0000;
@@ -168,6 +169,34 @@ pub fn prepare(
     }
 
     true
+}
+
+pub fn run_user_buffer_validation(
+    runner: &mut crate::tests::framework::TestRunner,
+) {
+    runner.run(
+        b"syscall::user_buffer_validation",
+        test_user_buffer_validation,
+    );
+}
+
+fn test_user_buffer_validation() -> bool {
+    validate_user_buffer(
+        USER_CODE_VADDR,
+        memory::paging::PAGE_SIZE,
+    )
+        && validate_user_buffer(
+            USER_STACK_VADDR,
+            memory::paging::PAGE_SIZE,
+        )
+        && validate_user_buffer(
+            USER_CODE_VADDR,
+            memory::paging::PAGE_SIZE * 2,
+        )
+        && !validate_user_buffer(
+            memory::paging::KERNEL_SPACE_START,
+            memory::paging::PAGE_SIZE,
+        )
 }
 
 pub fn run() -> bool {

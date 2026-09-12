@@ -126,6 +126,14 @@ impl KernelTestRunner {
         ring3::prepare(allocator)
     }
 
+    pub fn run_ring3_user_buffer_validation(
+        &mut self,
+    ) {
+        ring3::run_user_buffer_validation(
+            &mut self.runner,
+        );
+    }
+
     pub fn run_ring3_transition(
         &mut self,
     ) {

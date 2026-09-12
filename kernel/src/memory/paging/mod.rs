@@ -90,6 +90,71 @@ pub fn is_kernel_address(address: u64) -> bool {
         && address <= KERNEL_SPACE_END
 }
 
+pub unsafe fn is_user_page_mapped(
+    pml4: *mut PageTable,
+    virtual_address: u64,
+) -> bool {
+    if !is_user_address(virtual_address)
+        || virtual_address & (PAGE_SIZE - 1) != 0
+    {
+        return false;
+    }
+
+    let indices =
+        table::page_table_indices(virtual_address);
+
+    let pml4_entry = unsafe {
+        (*pml4).entries[indices.pml4]
+    };
+
+    if pml4_entry & PRESENT == 0
+        || pml4_entry & USER == 0
+    {
+        return false;
+    }
+
+    let pdpt =
+        (pml4_entry & ADDRESS_MASK)
+            as *mut PageTable;
+
+    let pdpt_entry = unsafe {
+        (*pdpt).entries[indices.pdpt]
+    };
+
+    if pdpt_entry & PRESENT == 0
+        || pdpt_entry & USER == 0
+        || pdpt_entry & HUGE_PAGE != 0
+    {
+        return false;
+    }
+
+    let pd =
+        (pdpt_entry & ADDRESS_MASK)
+            as *mut PageTable;
+
+    let pd_entry = unsafe {
+        (*pd).entries[indices.pd]
+    };
+
+    if pd_entry & PRESENT == 0
+        || pd_entry & USER == 0
+        || pd_entry & HUGE_PAGE != 0
+    {
+        return false;
+    }
+
+    let pt =
+        (pd_entry & ADDRESS_MASK)
+            as *mut PageTable;
+
+    let pte = unsafe {
+        (*pt).entries[indices.pt]
+    };
+
+    pte & PRESENT != 0
+        && pte & USER != 0
+}
+
 pub unsafe fn init(
     allocator: &mut PhysicalFrameAllocator,
     boot_info: &BootInfo,
