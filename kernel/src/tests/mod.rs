@@ -11,6 +11,7 @@ mod thread;
 mod scheduler;
 mod ring3;
 mod syscall;
+mod elf;
 
 use crate::debug;
 use crate::memory::physical::PhysicalFrameAllocator;
@@ -145,6 +146,10 @@ impl KernelTestRunner {
 
     pub fn run_syscall(&mut self) {
         syscall::run(&mut self.runner);
+    }
+
+    pub fn run_elf(&mut self) {
+        elf::run(&mut self.runner);
     }
 
     pub fn run_double_fault(&mut self) {

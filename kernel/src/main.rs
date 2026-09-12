@@ -295,6 +295,7 @@ pub extern "C" fn _start(
         test_runner.run_cpu();
         test_runner.run_interrupts(&lapic);
         test_runner.run_scheduler_timer_preemption();
+        test_runner.run_elf();
         test_runner.run_double_fault();
         test_runner.finish();
     }
