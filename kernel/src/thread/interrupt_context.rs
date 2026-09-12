@@ -62,6 +62,36 @@ impl InterruptContext {
     pub const fn size() -> usize {
         core::mem::size_of::<Self>()
     }
+
+    pub const fn new_user(
+        rip: u64,
+        rflags: u64,
+        rsp: u64,
+    ) -> Self {
+        Self {
+            r15: 0,
+            r14: 0,
+            r13: 0,
+            r12: 0,
+            rbp: 0,
+            rbx: 0,
+            r11: 0,
+            r10: 0,
+            r9: 0,
+            r8: 0,
+            rdi: 0,
+            rsi: 0,
+            rdx: 0,
+            rcx: 0,
+            rax: 0,
+
+            rip,
+            cs: 0x2B,
+            rflags,
+            rsp,
+            ss: 0x33,
+        }
+    }
 }
 
 const _: () = assert!(

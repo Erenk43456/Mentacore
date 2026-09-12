@@ -14,6 +14,8 @@ pub struct AddressSpace {
     pml4: *mut PageTable,
 }
 
+unsafe impl Send for AddressSpace {}
+
 impl AddressSpace {
     pub unsafe fn new(
         allocator: &mut PhysicalFrameAllocator,

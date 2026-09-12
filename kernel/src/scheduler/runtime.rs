@@ -1,5 +1,8 @@
 use crate::memory::physical::PhysicalFrameAllocator;
-use crate::process::ProcessId;
+use crate::process::{
+    ProcessId,
+    ProcessManager,
+};
 use crate::thread::{
     ThreadManager,
     ThreadState,
@@ -21,6 +24,7 @@ extern "C" fn idle_thread() -> ! {
 pub struct SchedulerRuntime {
     scheduler: Scheduler,
     manager: ThreadManager,
+    processes: ProcessManager,
 }
 
 pub static SCHEDULER_RUNTIME:
@@ -51,6 +55,7 @@ impl SchedulerRuntime {
     ) -> Result<Self, ()> {
         let mut manager = ThreadManager::new();
         let mut scheduler = Scheduler::new();
+        let processes = ProcessManager::new();
 
         manager.create(
             IDLE_THREAD_ID,
@@ -69,6 +74,7 @@ impl SchedulerRuntime {
         Ok(Self {
             scheduler,
             manager,
+            processes,
         })
     }
 
@@ -187,8 +193,116 @@ impl SchedulerRuntime {
                 current_rsp,
             )?;
 
+        let next_thread_id =
+            runtime.scheduler.current()?;
+
+        let next_thread =
+            runtime.manager.get(next_thread_id)?;
+
+        let process_id =
+            next_thread.process_id();
+
+        if process_id != KERNEL_PROCESS_ID {
+            let process =
+                runtime.processes.get(process_id)?;
+
+            unsafe {
+                process.address_space().activate();
+            }
+        }
+
         drop(guard);
 
         Some(next_rsp)
+    }
+
+    pub fn create_userspace_process(
+        process_id: ProcessId,
+        thread_id: ThreadId,
+        loaded_elf: crate::memory::LoadedElf,
+        allocator: &mut PhysicalFrameAllocator,
+    ) -> Result<(), ()> {
+        let user_stack_top =
+            unsafe {
+                // Stack mapping is performed before process creation.
+                loaded_elf.user_stack_top()
+            };
+
+        let mut guard =
+            SCHEDULER_RUNTIME.lock_irqsave();
+
+        let runtime =
+            guard.as_mut().ok_or(())?;
+
+        runtime.processes.create_userspace(
+            process_id,
+            loaded_elf,
+            user_stack_top,
+        )?;
+
+        let process =
+            runtime.processes
+                .get(process_id)
+                .ok_or(())?;
+
+        runtime.manager.create_user(
+            thread_id,
+            process_id,
+            allocator,
+            process.entry(),
+            process.user_stack_top(),
+        )?;
+
+        runtime.scheduler.add_thread(
+            &runtime.manager,
+            thread_id,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn launch_userspace(
+        process_id: ProcessId,
+        thread_id: ThreadId,
+    ) -> Result<(), ()> {
+        let mut guard =
+            SCHEDULER_RUNTIME.lock_irqsave();
+
+        let runtime =
+            guard.as_mut().ok_or(())?;
+
+        runtime.scheduler
+            .start_thread(
+                &mut runtime.manager,
+                thread_id,
+            )?;
+
+        let process =
+            runtime.processes
+                .get(process_id)
+                .ok_or(())?;
+
+        unsafe {
+            process.address_space().activate();
+        }
+
+        let thread =
+            runtime.manager
+                .get(thread_id)
+                .ok_or(())?;
+
+        let next_rsp =
+            thread.interrupt_rsp();
+
+        drop(guard);
+
+        let mut current_rsp = 0u64;
+
+        unsafe {
+            crate::thread::interrupt_context_switch(
+                &raw mut current_rsp,
+                next_rsp as *const crate::thread::InterruptContext,
+            );
+        }
     }
 }

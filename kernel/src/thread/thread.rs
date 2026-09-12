@@ -153,4 +153,55 @@ impl Thread {
 
         Ok(())
     }
+
+    pub fn new_user(
+        tid: ThreadId,
+        process_id: ProcessId,
+        allocator: &mut PhysicalFrameAllocator,
+        entry: u64,
+        user_stack_top: u64,
+    ) -> Result<Self, ()> {
+        let kernel_stack =
+            KernelStack::allocate(allocator)
+                .ok_or(())?;
+
+        let frame_size =
+            core::mem::size_of::<super::InterruptContext>()
+                as u64;
+
+        let frame_address =
+            kernel_stack
+                .top()
+                .checked_sub(8)
+                .ok_or(())?
+                .checked_sub(frame_size)
+                .ok_or(())?;
+
+        let frame =
+            super::InterruptContext::new_user(
+                entry,
+                0x202,
+                user_stack_top,
+            );
+
+        unsafe {
+            core::ptr::write(
+                frame_address
+                    as *mut super::InterruptContext,
+                frame,
+            );
+        }
+
+        Ok(Self {
+            tid,
+            process_id,
+            state: ThreadState::Ready,
+            context: KernelContext::new(
+                kernel_stack.top() - 8,
+                entry as usize as u64,
+            ),
+            kernel_stack,
+            interrupt_rsp: frame_address,
+        })
+    }
 }

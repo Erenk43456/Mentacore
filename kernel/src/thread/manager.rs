@@ -122,4 +122,40 @@ impl ThreadManager {
     pub fn is_empty(&self) -> bool {
         self.count == 0
     }
+
+    pub fn create_user(
+        &mut self,
+        thread_id: ThreadId,
+        process_id: ProcessId,
+        allocator: &mut PhysicalFrameAllocator,
+        entry: u64,
+        user_stack_top: u64,
+    ) -> Result<(), ()> {
+        if self.count >= MAX_THREADS {
+            return Err(());
+        }
+
+        if self.contains(thread_id) {
+            return Err(());
+        }
+
+        let thread =
+            Thread::new_user(
+                thread_id,
+                process_id,
+                allocator,
+                entry,
+                user_stack_top,
+            )?;
+
+        for slot in self.threads.iter_mut() {
+            if slot.is_none() {
+                *slot = Some(thread);
+                self.count += 1;
+                return Ok(());
+            }
+        }
+
+        Err(())
+    }
 }

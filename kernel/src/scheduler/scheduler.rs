@@ -236,4 +236,38 @@ impl Scheduler {
 
         None
     }
+
+    pub fn start_thread(
+        &mut self,
+        manager: &mut ThreadManager,
+        thread_id: ThreadId,
+    ) -> Result<(), ()> {
+        let index =
+            self.find_index(thread_id)
+                .ok_or(())?;
+
+        self.current = Some(index);
+
+        for index in 0..self.queue.count() {
+            let thread_id =
+                match self.queue.get(index) {
+                    Some(thread_id) => thread_id,
+                    None => continue,
+                };
+
+            if let Some(thread) =
+                manager.get_mut(thread_id)
+            {
+                thread.set_state(
+                    if index == self.current.unwrap() {
+                        crate::thread::ThreadState::Running
+                    } else {
+                        crate::thread::ThreadState::Ready
+                    },
+                );
+            }
+        }
+
+        Ok(())
+    }
 }

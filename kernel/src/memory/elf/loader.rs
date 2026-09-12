@@ -44,11 +44,21 @@ impl LoadedSegment {
     };
 }
 
+pub const USER_STACK_PAGES: usize = 4;
+
+pub const USER_STACK_TOP: u64 =
+    crate::memory::paging::USER_SPACE_END & !(crate::memory::paging::PAGE_SIZE - 1);
+
+pub const USER_STACK_BASE: u64 =
+    USER_STACK_TOP -
+    (USER_STACK_PAGES as u64 * crate::memory::paging::PAGE_SIZE);
+
 pub struct LoadedElf {
     address_space: AddressSpace,
     entry: u64,
     segments: [LoadedSegment; MAX_LOADED_SEGMENTS],
     segment_count: usize,
+    user_stack_top: u64,
 }
 
 impl LoadedElf {
@@ -58,6 +68,10 @@ impl LoadedElf {
 
     pub fn segment_count(&self) -> usize {
         self.segment_count
+    }
+
+    pub fn user_stack_top(&self) -> u64 {
+        self.user_stack_top
     }
 
     pub fn segment(
@@ -73,6 +87,53 @@ impl LoadedElf {
 
     pub fn address_space(&self) -> &AddressSpace {
         &self.address_space
+    }
+
+    pub fn into_address_space(self) -> AddressSpace {
+        self.address_space
+    }
+
+    pub unsafe fn map_user_stack(
+        &mut self,
+        allocator: &mut PhysicalFrameAllocator,
+    ) -> Result<u64, ()> {
+        use crate::memory::paging::{
+            PageFlags,
+            PAGE_SIZE,
+        };
+
+        for page_index in 0..USER_STACK_PAGES {
+            let virtual_address =
+                USER_STACK_BASE
+                    + page_index as u64 * PAGE_SIZE;
+
+            let frame =
+                allocator.allocate_frame()
+                    .ok_or(())?;
+
+            unsafe {
+                core::ptr::write_bytes(
+                    frame.start_address as *mut u8,
+                    0,
+                    PAGE_SIZE as usize,
+                );
+
+                self.address_space.map(
+                    allocator,
+                    virtual_address,
+                    frame.start_address,
+                    PageFlags {
+                        writable: true,
+                        cache_disable: false,
+                        user: true,
+                    },
+                )?;
+            }
+        }
+
+        self.user_stack_top = USER_STACK_TOP;
+
+        Ok(USER_STACK_TOP)
     }
 }
 
@@ -128,6 +189,7 @@ pub unsafe fn load(
         entry: elf.entry(),
         segments,
         segment_count,
+        user_stack_top: 0,
     })
 }
 
