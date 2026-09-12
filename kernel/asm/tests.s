@@ -26,6 +26,13 @@ user_privilege_test:
     ; First transition:
     ; CPL3 -> CPL0 -> CPL3
     mov rax, 0xC0DE000000000001
+
+    ; Prove that the Ring 3 stack page is user-accessible.
+    mov [rsp - 8], rax
+    mov rcx, [rsp - 8]
+    cmp rcx, rax
+    jne .stack_failure
+
     int 0x80
 
     ; Second transition:
@@ -34,6 +41,11 @@ user_privilege_test:
     int 0x80
 
     ; Must never be reached.
+    hlt
+
+.stack_failure:
+    mov rax, 0xC0DE00000000FFFF
+    int 0x80
     hlt
 
 
