@@ -1,9 +1,10 @@
+mod loader;
+
 use crate::memory::{
     ElfError,
     ParsedElf,
-    PF_R,
-    PF_X,
 };
+use crate::memory::physical::PhysicalFrameAllocator;
 
 use super::framework::TestRunner;
 
@@ -63,7 +64,7 @@ fn valid_elf() -> [u8; ELF_SIZE] {
     let ph = 0x40;
 
     write_u32(&mut data, ph, 1); // PT_LOAD
-    write_u32(&mut data, ph + 4, PF_R | PF_X);
+    write_u32(&mut data, ph + 4, 0x5); // PF_R | PF_X
 
     write_u64(&mut data, ph + 8, 0x1000); // offset
     write_u64(&mut data, ph + 16, ENTRY); // virtual address
@@ -233,7 +234,10 @@ fn test_file_range_out_of_bounds() -> bool {
     )
 }
 
-pub fn run(runner: &mut TestRunner) {
+pub fn run(
+    runner: &mut TestRunner,
+    allocator: &mut PhysicalFrameAllocator,
+) {
     runner.run(
         b"elf::valid_header",
         test_valid_elf,
@@ -287,5 +291,10 @@ pub fn run(runner: &mut TestRunner) {
     runner.run(
         b"elf::file_range_out_of_bounds",
         test_file_range_out_of_bounds,
+    );
+
+    loader::run(
+        runner,
+        allocator,
     );
 }

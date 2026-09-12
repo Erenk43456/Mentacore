@@ -5,9 +5,13 @@ pub mod physical;
 mod elf;
 
 pub use elf::{
+    load as load_elf,
     ElfError,
     ElfHeader,
+    ElfLoadError,
     LoadSegment,
+    LoadedElf,
+    LoadedSegment,
     ParsedElf,
     SegmentFlags,
     PF_R,

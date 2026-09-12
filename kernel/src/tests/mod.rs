@@ -148,8 +148,14 @@ impl KernelTestRunner {
         syscall::run(&mut self.runner);
     }
 
-    pub fn run_elf(&mut self) {
-        elf::run(&mut self.runner);
+    pub fn run_elf(
+        &mut self,
+        allocator: &mut PhysicalFrameAllocator,
+    ) {
+        elf::run(
+            &mut self.runner,
+            allocator,
+        );
     }
 
     pub fn run_double_fault(&mut self) {

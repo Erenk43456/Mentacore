@@ -1,6 +1,7 @@
 mod header;
 mod parser;
 mod program;
+mod loader;
 
 pub use header::ElfHeader;
 
@@ -37,3 +38,10 @@ pub enum ElfError {
     NoLoadSegments,
     EntryNotInLoadSegment,
 }
+
+pub use loader::{
+    load,
+    ElfLoadError,
+    LoadedElf,
+    LoadedSegment,
+};

@@ -25,7 +25,7 @@ pub(super) const ADDRESS_MASK: u64 =
 
 pub(super) const INDEX_MASK: u64 = 0x1ff;
 
-pub(super) const IDENTITY_MAP_SIZE: u64 =
+pub const IDENTITY_MAP_SIZE: u64 =
     0x1_0000_0000;
 
 pub const USER_SPACE_START: u64 =
