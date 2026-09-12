@@ -90,6 +90,23 @@ impl KernelTestRunner {
         );
     }
 
+    pub fn prepare_scheduler_timer_preemption(
+        &mut self,
+        allocator: &mut PhysicalFrameAllocator,
+    ) -> bool {
+        scheduler::prepare_timer_preemption(
+            allocator,
+        )
+    }
+
+    pub fn run_scheduler_timer_preemption(
+        &mut self,
+    ) {
+        scheduler::run_timer_preemption(
+            &mut self.runner,
+        );
+    }
+
     pub fn run_interrupts(
         &mut self,
         lapic: &crate::hardware::lapic::Lapic,
@@ -97,6 +114,12 @@ impl KernelTestRunner {
         interrupts::run(
             &mut self.runner,
             lapic,
+        );
+    }
+
+    pub fn run_double_fault(&mut self) {
+        interrupts::run_double_fault(
+            &mut self.runner,
         );
     }
 

@@ -1,3 +1,8 @@
+use core::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
+
 use crate::memory::physical::PhysicalFrameAllocator;
 use crate::scheduler::{
     Scheduler,
@@ -8,6 +13,37 @@ use crate::thread::{
     ThreadManager,
     ThreadState,
 };
+
+static TIMER_PREEMPTION_WORKER_RUNS: AtomicU64 =
+    AtomicU64::new(0);
+
+extern "C" fn timer_preemption_worker() -> ! {
+    loop {
+        TIMER_PREEMPTION_WORKER_RUNS.fetch_add(
+            1,
+            Ordering::Relaxed,
+        );
+
+        crate::cpu::halt();
+    }
+}
+
+pub(super) fn prepare_timer_preemption(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    TIMER_PREEMPTION_WORKER_RUNS.store(
+        0,
+        Ordering::Relaxed,
+    );
+
+    SchedulerRuntime::prepare_thread(
+        1,
+        crate::scheduler::KERNEL_PROCESS_ID,
+        allocator,
+        timer_preemption_worker,
+    )
+    .is_ok()
+}
 
 extern "C" fn scheduler_test_entry() -> ! {
     loop {
@@ -438,4 +474,23 @@ pub(super) fn scheduler_preempts_thread(
                     thread.interrupt_rsp()
                 )
                 .unwrap_or(0)
+}
+
+pub(super) fn scheduler_timer_preemption() -> bool {
+    if SchedulerRuntime::activate_thread(1).is_err() {
+        return false;
+    }
+
+    for _ in 0..5_000_000 {
+        if TIMER_PREEMPTION_WORKER_RUNS.load(
+            Ordering::Relaxed,
+        ) >= 2
+        {
+            return true;
+        }
+
+        core::hint::spin_loop();
+    }
+
+    false
 }

@@ -21,6 +21,8 @@ pub struct InterruptContext {
     pub rip: u64,
     pub cs: u64,
     pub rflags: u64,
+    pub rsp: u64,
+    pub ss: u64,
 }
 
 impl InterruptContext {
@@ -28,6 +30,8 @@ impl InterruptContext {
         rip: u64,
         cs: u64,
         rflags: u64,
+        rsp: u64,
+        ss: u64,
     ) -> Self {
         Self {
             r15: 0,
@@ -50,6 +54,8 @@ impl InterruptContext {
             rip,
             cs,
             rflags,
+            rsp,
+            ss,
         }
     }
 
@@ -59,7 +65,7 @@ impl InterruptContext {
 }
 
 const _: () = assert!(
-    core::mem::size_of::<InterruptContext>() == 144
+    core::mem::size_of::<InterruptContext>() == 160
 );
 
 const _: () = assert!(
@@ -96,4 +102,12 @@ const _: () = assert!(
 
 const _: () = assert!(
     core::mem::offset_of!(InterruptContext, rflags) == 136
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, rsp) == 144
+);
+
+const _: () = assert!(
+    core::mem::offset_of!(InterruptContext, ss) == 152
 );

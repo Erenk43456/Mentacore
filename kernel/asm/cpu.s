@@ -117,6 +117,8 @@ global interrupt_context_switch
 ;   +120 rip
 ;   +128 cs
 ;   +136 rflags
+;   +144 rsp
+;   +152 ss
 
 interrupt_context_switch:
     ; RDI = current_rsp

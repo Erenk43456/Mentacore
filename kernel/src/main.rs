@@ -142,6 +142,21 @@ pub extern "C" fn _start(
         b"Scheduler initialized.\r\n"
     );
 
+    #[cfg(feature = "kernel-tests")]
+    {
+        if !test_runner.prepare_scheduler_timer_preemption(
+            &mut allocator,
+        ) {
+            debug::write(
+                b"ERROR: Failed to prepare scheduler timer preemption.\r\n",
+            );
+
+            loop {
+                cpu::halt();
+            }
+        }
+    }
+
     // ---------------------------------------------------------
     // LAPIC
     // ---------------------------------------------------------
@@ -210,6 +225,8 @@ pub extern "C" fn _start(
         test_runner.run_tsc();
         test_runner.run_cpu();
         test_runner.run_interrupts(&lapic);
+        test_runner.run_scheduler_timer_preemption();
+        test_runner.run_double_fault();
         test_runner.finish();
     }
 

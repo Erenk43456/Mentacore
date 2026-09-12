@@ -45,6 +45,11 @@ pub fn run(
         || crate::interrupts::validate_interrupt_context_layout(),
     );
 
+}
+
+pub fn run_double_fault(
+    runner: &mut TestRunner,
+) {
     runner.run(
         b"interrupts::double_fault_ist1",
         ist::test_double_fault_ist1,

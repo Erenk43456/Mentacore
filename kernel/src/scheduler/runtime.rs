@@ -102,4 +102,88 @@ impl SchedulerRuntime {
                     .map(|thread| thread.state())
             )
     }
+
+    pub fn create_thread(
+        thread_id: ThreadId,
+        process_id: ProcessId,
+        allocator: &mut PhysicalFrameAllocator,
+        entry: crate::thread::ThreadEntry,
+    ) -> Result<(), ()> {
+        let mut guard =
+            SCHEDULER_RUNTIME.lock_irqsave();
+
+        let runtime =
+            guard.as_mut().ok_or(())?;
+
+        runtime.manager.create(
+            thread_id,
+            process_id,
+            allocator,
+            entry,
+        )?;
+
+        runtime.scheduler.add_thread(
+            &runtime.manager,
+            thread_id,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn prepare_thread(
+        thread_id: ThreadId,
+        process_id: ProcessId,
+        allocator: &mut PhysicalFrameAllocator,
+        entry: crate::thread::ThreadEntry,
+    ) -> Result<(), ()> {
+        let mut guard = SCHEDULER_RUNTIME.lock_irqsave();
+        let runtime = guard.as_mut().ok_or(())?;
+
+        runtime
+            .manager
+            .create(
+                thread_id,
+                process_id,
+                allocator,
+                entry,
+            )?;
+
+        Ok(())
+    }
+
+    pub fn activate_thread(
+        thread_id: ThreadId,
+    ) -> Result<(), ()> {
+        let mut guard = SCHEDULER_RUNTIME.lock_irqsave();
+        let runtime = guard.as_mut().ok_or(())?;
+
+        runtime
+            .scheduler
+            .add_thread(
+                &runtime.manager,
+                thread_id,
+            )?;
+
+        Ok(())
+    }
+
+    pub fn preempt(
+        current_rsp: u64,
+    ) -> Option<u64> {
+        let mut guard =
+            SCHEDULER_RUNTIME.lock_irqsave();
+
+        let runtime =
+            guard.as_mut()?;
+
+        let next_rsp =
+            runtime.scheduler.preempt(
+                &mut runtime.manager,
+                current_rsp,
+            )?;
+
+        drop(guard);
+
+        Some(next_rsp)
+    }
 }

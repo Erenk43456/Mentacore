@@ -144,7 +144,15 @@ fn test_interrupt_context(
         return false;
     }
 
-    true
+    let frame = unsafe {
+        &*(interrupt_rsp as *const InterruptContext)
+    };
+
+    frame.rip == test_thread_entry as usize as u64
+        && frame.cs == 0x08
+        && frame.rflags == 0x202
+        && frame.rsp == thread.kernel_stack().top() - 8
+        && frame.ss == 0x10
 }
 
 pub(super) fn test_kernel_context_layout() -> bool {

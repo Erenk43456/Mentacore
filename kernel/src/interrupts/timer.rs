@@ -58,22 +58,48 @@ extern "C" fn lapic_timer_dispatch(
         );
     }
 
-    #[cfg(not(feature = "kernel-tests"))]
-    let _ = dispatch_rsp;
-
     /*
-     * The frame is currently consumed by the timer
-     * entry/exit path. Scheduler preemption will use
-     * this frame in the next step.
+     * The LAPIC interrupt must be acknowledged before
+     * transferring control to another thread.
      */
-    let _ = dispatch_rsp;
-
     unsafe {
         crate::hardware::lapic::write_global_eoi();
+    }
+
+    let next_rsp =
+        match crate::scheduler::SchedulerRuntime::preempt(
+            dispatch_rsp,
+        ) {
+            Some(rsp) => rsp,
+            None => return,
+        };
+
+    /*
+     * No runnable thread change occurred.
+     * Continue through the normal interrupt return path.
+     */
+    if next_rsp == dispatch_rsp {
+        return;
+    }
+
+    /*
+     * interrupt_context_switch() stores the current
+     * interrupt-entry RSP before loading the next
+     * thread's pre-built InterruptContext.
+     *
+     * It never returns; iretq resumes the selected thread.
+     */
+    let mut current_rsp = dispatch_rsp;
+
+    unsafe {
+        crate::thread::interrupt_context_switch(
+            &raw mut current_rsp,
+            next_rsp as *const crate::thread::InterruptContext,
+        );
     }
 }
 
 #[cfg(feature = "kernel-tests")]
 pub fn validate_interrupt_context_layout() -> bool {
-    core::mem::size_of::<InterruptContext>() == 18 * 8
+    core::mem::size_of::<InterruptContext>() == 20 * 8
 }

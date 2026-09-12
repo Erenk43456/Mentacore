@@ -117,7 +117,7 @@ impl Thread {
         * Keep the post-iret stack aligned exactly like a
         * normal kernel thread entry.
         *
-        * iretq consumes 144 bytes, leaving:
+        * iretq consumes 160 bytes, leaving:
         *
         *     RSP = stack_top - 8
         *
@@ -136,6 +136,8 @@ impl Thread {
                 self.context.rip(),
                 0x08,
                 self.context.rflags(),
+                self.context.rsp(),
+                0x10,
             );
 
         unsafe {

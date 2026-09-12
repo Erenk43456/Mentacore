@@ -102,3 +102,20 @@ pub(super) fn run(
         || scheduler_preempts_thread(allocator),
     );
 }
+
+pub fn prepare_timer_preemption(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    integration::prepare_timer_preemption(
+        allocator,
+    )
+}
+
+pub fn run_timer_preemption(
+    runner: &mut TestRunner,
+) {
+    runner.run(
+        b"scheduler::timer_preemption",
+        || integration::scheduler_timer_preemption(),
+    );
+}

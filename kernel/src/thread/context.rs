@@ -56,5 +56,5 @@ unsafe extern "C" {
     pub fn interrupt_context_switch(
         current_rsp: *mut u64,
         next: *const InterruptContext,
-    );
+    ) -> !;
 }
