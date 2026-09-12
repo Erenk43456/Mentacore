@@ -28,4 +28,32 @@ impl SyscallContext {
             r9,
         }
     }
+
+    pub const fn number(&self) -> u64 {
+        self.rax
+    }
+
+    pub const fn arg0(&self) -> u64 {
+        self.rdi
+    }
+
+    pub const fn arg1(&self) -> u64 {
+        self.rsi
+    }
+
+    pub const fn arg2(&self) -> u64 {
+        self.rdx
+    }
+
+    pub const fn arg3(&self) -> u64 {
+        self.r10
+    }
+
+    pub const fn arg4(&self) -> u64 {
+        self.r8
+    }
+
+    pub const fn arg5(&self) -> u64 {
+        self.r9
+    }
 }
