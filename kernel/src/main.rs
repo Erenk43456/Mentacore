@@ -144,6 +144,9 @@ pub extern "C" fn _start(
     );
 
     #[cfg(feature = "kernel-tests")]
+    test_runner.run_syscall();
+
+    #[cfg(feature = "kernel-tests")]
     {
         if !test_runner.prepare_scheduler_timer_preemption(
             &mut allocator,

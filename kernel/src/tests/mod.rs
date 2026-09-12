@@ -10,6 +10,7 @@ mod process;
 mod thread;
 mod scheduler;
 mod ring3;
+mod syscall;
 
 use crate::debug;
 use crate::memory::physical::PhysicalFrameAllocator;
@@ -132,6 +133,10 @@ impl KernelTestRunner {
             b"interrupts::ring3_transition",
             ring3::run,
         );
+    }
+
+    pub fn run_syscall(&mut self) {
+        syscall::run(&mut self.runner);
     }
 
     pub fn run_double_fault(&mut self) {
