@@ -23,6 +23,9 @@ const KERNEL_PATH: &str = "\\kernel.elf";
 const PAGE_SIZE: u64 = 4096;
 const KERNEL_STACK_PAGES: usize = 4;
 
+const USERSPACE_PATH: &str = "\\userspace.elf";
+const MAX_USERSPACE_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
+
 #[entry]
 fn main() -> Status {
     uefi::helpers::init().unwrap();
@@ -252,6 +255,102 @@ fn main() -> Status {
     println!("All kernel segments loaded.");
 
     // ------------------------------------------------------------
+    // Load userspace ELF.
+    // ------------------------------------------------------------
+
+    println!();
+    println!("Loading userspace...");
+
+    let userspace = match load_userspace_file() {
+        Ok(userspace) => userspace,
+        Err(_) => {
+            println!("ERROR: Failed to read userspace ELF.");
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    };
+
+    if userspace.is_empty() {
+        println!("ERROR: Userspace ELF is empty.");
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    println!(
+        "Userspace ELF loaded: {} bytes",
+        userspace.len()
+    );
+
+    // ------------------------------------------------------------
+    // Userspace image
+    // ------------------------------------------------------------
+
+    let userspace_size = userspace.len() as u64;
+
+    let userspace_pages_size = match align_up(userspace_size, PAGE_SIZE) {
+        Some(size) => size,
+        None => {
+            println!("ERROR: Userspace image size overflow.");
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    };
+
+    let userspace_pages = match usize::try_from(userspace_pages_size / PAGE_SIZE) {
+        Ok(pages) if pages > 0 => pages,
+        _ => {
+            println!("ERROR: Invalid userspace page count.");
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    };
+
+    println!("Userspace pages: {}", userspace_pages);
+
+    println!("Allocating userspace image memory...");
+
+    let userspace_allocation = match boot::allocate_pages(
+        AllocateType::MaxAddress(MAX_USERSPACE_PHYSICAL_ADDRESS.into()),
+        MemoryType::LOADER_DATA,
+        userspace_pages,
+    ) {
+        Ok(ptr) => ptr,
+        Err(_) => {
+            println!("ERROR: Failed to allocate userspace image.");
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    };
+
+    let userspace_image_addr = userspace_allocation.as_ptr() as u64;
+
+    println!(
+        "Userspace image: {:#018x} - {:#018x}",
+        userspace_image_addr,
+        userspace_image_addr + userspace_pages_size
+    );
+
+    unsafe {
+        ptr::copy_nonoverlapping(
+            userspace.as_ptr(),
+            userspace_image_addr as *mut u8,
+            userspace.len(),
+        );
+    }
+
+    println!("Userspace image copied.");
+
+    // ------------------------------------------------------------
     // Allocate kernel stack.
     // ------------------------------------------------------------
 
@@ -319,6 +418,20 @@ fn main() -> Status {
             }
         }
     };
+
+    boot_info.userspace_image_addr = userspace_image_addr;
+
+    println!(
+        "Userspace image address: {:#018x}",
+        boot_info.userspace_image_addr
+    );
+
+    boot_info.userspace_image_size = userspace_size;
+
+    println!(
+        "Userspace image size: {} bytes",
+        boot_info.userspace_image_size
+    );
 
     println!(
         "Framebuffer: {:#018x}",
@@ -394,6 +507,19 @@ fn load_kernel_file() -> Result<Vec<u8>, ()> {
         .map_err(|_| ())
 }
 
+fn load_userspace_file() -> Result<Vec<u8>, ()> {
+    let fs = boot::get_image_file_system(boot::image_handle())
+        .map_err(|_| ())?;
+
+    let mut fs = FileSystem::new(fs);
+
+    let path = CString16::try_from(USERSPACE_PATH)
+        .map_err(|_| ())?;
+
+    fs.read(path.as_ref())
+        .map_err(|_| ())
+}
+
 fn get_framebuffer_info() -> Result<BootInfo, ()> {
     let handle = boot::get_handle_for_protocol::<GraphicsOutput>()
         .map_err(|_| ())?;
@@ -453,6 +579,9 @@ fn get_framebuffer_info() -> Result<BootInfo, ()> {
         framebuffer_height: height as u32,
         framebuffer_stride: stride as u32,
         framebuffer_format,
+
+        userspace_image_addr: 0,
+        userspace_image_size: 0,
 
         memory_map_addr: 0,
         memory_map_size: 0,

@@ -17,7 +17,7 @@ pub unsafe fn current_pml4() -> *mut PageTable {
     (address & ADDRESS_MASK) as *mut PageTable
 }
 
-pub(super) unsafe fn load_cr3(
+pub unsafe fn load_cr3(
     address: u64,
 ) {
     unsafe {

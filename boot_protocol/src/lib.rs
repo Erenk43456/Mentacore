@@ -1,6 +1,6 @@
 #![no_std]
 
-pub const BOOT_PROTOCOL_VERSION: u32 = 1;
+pub const BOOT_PROTOCOL_VERSION: u32 = 2;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -24,4 +24,8 @@ pub struct BootInfo {
     pub memory_map_size: u64,
     pub memory_map_descriptor_size: u32,
     pub memory_map_descriptor_version: u32,
+
+    // Userspace ELF image loaded by the bootloader.
+    pub userspace_image_addr: u64,
+    pub userspace_image_size: u64,
 }

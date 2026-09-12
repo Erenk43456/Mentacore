@@ -3,11 +3,13 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 
 $KernelElf      = Join-Path $ProjectRoot "target\x86_64-unknown-none\debug\mentacore-kernel"
+$UserspaceElf   = Join-Path $ProjectRoot "userspace\target\x86_64-unknown-none\debug\mentacore-userspace"
 $BootloaderEfi  = Join-Path $ProjectRoot "target\x86_64-unknown-uefi\debug\mentacore-bootloader.efi"
 
 $EspRoot        = Join-Path $ProjectRoot "target\esp"
 $BootEfi        = Join-Path $EspRoot "EFI\BOOT\BOOTX64.EFI"
 $EspKernel      = Join-Path $EspRoot "kernel.elf"
+$EspUserspace   = Join-Path $EspRoot "userspace.elf"
 
 $VarsTemplate   = "C:\Program Files\qemu\share\edk2-i386-vars.fd"
 $VarsFile       = Join-Path $ProjectRoot "target\edk2-x86_64-vars.fd"
@@ -30,11 +32,17 @@ Set-Location $ProjectRoot
 # 1. Build kernel
 # ------------------------------------------------------------
 
-Write-Host "[1/6] Building kernel..." -ForegroundColor Cyan
+Write-Host "[1/8] Building kernel..." -ForegroundColor Cyan
+
+Push-Location (Join-Path $ProjectRoot "kernel")
 
 cargo build -p mentacore-kernel --features kernel-tests --target x86_64-unknown-none
 
-if ($LASTEXITCODE -ne 0) {
+$KernelBuildExitCode = $LASTEXITCODE
+
+Pop-Location
+
+if ($KernelBuildExitCode -ne 0) {
     Write-Host "[FAIL] Kernel build failed." -ForegroundColor Red
     exit 1
 }
@@ -48,10 +56,34 @@ Write-Host "[OK] Kernel built." -ForegroundColor Green
 Write-Host ""
 
 # ------------------------------------------------------------
-# 2. Build bootloader
+# 2. Build userspace
 # ------------------------------------------------------------
 
-Write-Host "[2/6] Building bootloader..." -ForegroundColor Cyan
+Write-Host "[2/8] Building userspace..."
+
+Push-Location (Join-Path $ProjectRoot "userspace")
+
+cargo build
+$UserspaceBuildExitCode = $LASTEXITCODE
+
+Pop-Location
+
+if ($UserspaceBuildExitCode -ne 0) {
+    Write-Host "ERROR: Userspace build failed."
+    exit $UserspaceBuildExitCode
+}
+
+if (-not (Test-Path $UserspaceElf)) {
+    Write-Host "ERROR: Userspace ELF not found:"
+    Write-Host $UserspaceElf
+    exit 1
+}
+
+# ------------------------------------------------------------
+# 3. Build bootloader
+# ------------------------------------------------------------
+
+Write-Host "[3/8] Building bootloader..." -ForegroundColor Cyan
 
 cargo build -p mentacore-bootloader --target x86_64-unknown-uefi
 
@@ -69,10 +101,10 @@ Write-Host "[OK] Bootloader built." -ForegroundColor Green
 Write-Host ""
 
 # ------------------------------------------------------------
-# 3. Prepare EFI boot directory
+# 4. Prepare EFI boot directory
 # ------------------------------------------------------------
 
-Write-Host "[3/6] Preparing EFI boot directory..." -ForegroundColor Cyan
+Write-Host "[4/8] Preparing EFI boot directory..." -ForegroundColor Cyan
 
 New-Item `
     -ItemType Directory `
@@ -88,10 +120,10 @@ Write-Host "[OK] BOOTX64.EFI updated." -ForegroundColor Green
 Write-Host ""
 
 # ------------------------------------------------------------
-# 4. Copy kernel
+# 5. Copy kernel
 # ------------------------------------------------------------
 
-Write-Host "[4/6] Copying kernel to ESP..." -ForegroundColor Cyan
+Write-Host "[5/8] Copying kernel to ESP..." -ForegroundColor Cyan
 
 Copy-Item `
     $KernelElf `
@@ -102,10 +134,24 @@ Write-Host "[OK] kernel.elf copied." -ForegroundColor Green
 Write-Host ""
 
 # ------------------------------------------------------------
-# 5. Prepare test environment
+# 6. Copy userspace
 # ------------------------------------------------------------
 
-Write-Host "[5/6] Preparing QEMU test environment..." -ForegroundColor Cyan
+Write-Host "[6/8] Copying userspace to ESP..." -ForegroundColor Cyan
+
+Copy-Item `
+    $UserspaceElf `
+    $EspUserspace `
+    -Force
+
+Write-Host "[OK] userspace.elf copied." -ForegroundColor Green
+Write-Host ""
+
+# ------------------------------------------------------------
+# 7. Prepare test environment
+# ------------------------------------------------------------
+
+Write-Host "[7/8] Preparing QEMU test environment..." -ForegroundColor Cyan
 
 if (-not (Test-Path $Qemu)) {
     Write-Host "[FAIL] QEMU not found: $Qemu" -ForegroundColor Red
@@ -146,10 +192,10 @@ Write-Host "[OK] QEMU test environment ready." -ForegroundColor Green
 Write-Host ""
 
 # ------------------------------------------------------------
-# 6. Run QEMU test environment
+# 8. Run QEMU test environment
 # ------------------------------------------------------------
 
-Write-Host "[6/6] Running kernel tests in QEMU..." -ForegroundColor Cyan
+Write-Host "[8/8] Running kernel tests in QEMU..." -ForegroundColor Cyan
 Write-Host ""
 
 $QemuArguments = @(
