@@ -15,6 +15,7 @@ mod hardware;
 mod sync;
 #[cfg(feature = "kernel-tests")]
 mod tests;
+mod syscall;
 
 use core::arch::asm;
 use core::panic::PanicInfo;

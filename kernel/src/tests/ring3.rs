@@ -1,4 +1,3 @@
-use core::arch::asm;
 use core::sync::atomic::{
     AtomicBool,
     AtomicU64,
@@ -17,12 +16,6 @@ const USER_STACK_VADDR: u64 =
 
 const USER_STACK_TOP: u64 =
     USER_STACK_VADDR + memory::paging::PAGE_SIZE;
-
-const FIRST_MARKER: u64 =
-    0xC0DE_0000_0000_0001;
-
-const SECOND_MARKER: u64 =
-    0xC0DE_0000_0000_0002;
 
 const USER_CODE_SELECTOR: u64 = 0x2B;
 const USER_DATA_SELECTOR: u64 = 0x33;
@@ -202,12 +195,12 @@ pub fn run() -> bool {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn ring3_interrupt_dispatch(
-    saved_registers: *const u64,
+extern "C" fn syscall_interrupt_dispatch(
+    saved_registers: *mut u64,
     cpu_frame: *mut u64,
     current_rsp: u64,
 ) {
-    let saved_rax = unsafe {
+    let syscall_number = unsafe {
         *saved_registers.add(14)
     };
 
@@ -254,99 +247,125 @@ extern "C" fn ring3_interrupt_dispatch(
             && user_rip < USER_CODE_VADDR
                 + memory::paging::PAGE_SIZE;
 
-    if saved_rax == FIRST_MARKER {
-        let ok =
-            kernel_stack_ok
-                && user_frame_ok;
+    match syscall_number {
+        crate::syscall::SYS_GET_TID => {
+            if !kernel_stack_ok || !user_frame_ok {
+                debug::write(
+                    b"Ring 3 syscall transition validation FAILED.\r\n",
+                );
 
-        if !ok {
+                TEST_PASSED.store(
+                    false,
+                    Ordering::Relaxed,
+                );
+
+                unsafe {
+                    *cpu_frame.add(0) =
+                        ring3_kernel_resume as *const () as usize as u64;
+
+                    *cpu_frame.add(1) =
+                        KERNEL_CODE_SELECTOR;
+
+                    *cpu_frame.add(3) =
+                        kernel_resume_rsp;
+
+                    *cpu_frame.add(4) =
+                        0x10;
+                }
+
+                return;
+            }
+
+            let context =
+                crate::syscall::SyscallContext::new(
+                    syscall_number,
+                    unsafe { *saved_registers.add(10) },
+                    unsafe { *saved_registers.add(11) },
+                    unsafe { *saved_registers.add(12) },
+                    unsafe { *saved_registers.add(7) },
+                    unsafe { *saved_registers.add(9) },
+                    unsafe { *saved_registers.add(8) },
+                );
+
+            let result =
+                crate::syscall::dispatch(&context);
+
+            unsafe {
+                *saved_registers.add(14) = result;
+            }
+
             debug::write(
-                b"Ring 3 first interrupt validation FAILED.\r\n",
+                b"Ring 3 SYS_GET_TID syscall OK.\r\n",
+            );
+
+            return;
+        }
+
+        #[cfg(feature = "kernel-tests")]
+        crate::syscall::numbers::SYS_TEST_EXIT => {
+            let success =
+                kernel_stack_ok
+                    && user_frame_ok
+                    && kernel_resume_rsp != 0
+                    && unsafe {
+                        *saved_registers.add(10) != 0
+                    };
+
+            if success {
+                debug::write(
+                    b"Ring 3 syscall transition complete.\r\n",
+                );
+            } else {
+                debug::write(
+                    b"Ring 3 syscall transition FAILED.\r\n",
+                );
+            }
+
+            TEST_PASSED.store(
+                success,
+                Ordering::Relaxed,
             );
 
             unsafe {
                 *cpu_frame.add(0) =
                     ring3_kernel_resume as *const () as usize as u64;
+
                 *cpu_frame.add(1) =
                     KERNEL_CODE_SELECTOR;
+
                 *cpu_frame.add(3) =
                     kernel_resume_rsp;
+
                 *cpu_frame.add(4) =
                     0x10;
             }
 
-            TEST_PASSED.store(false, Ordering::Relaxed);
             return;
         }
 
-        debug::write(
-            b"Ring 3 -> Ring 0 -> Ring 3 OK.\r\n",
-        );
-
-        return;
-    }
-
-    if saved_rax == SECOND_MARKER {
-        let ok =
-            kernel_stack_ok
-                && user_frame_ok
-                && kernel_resume_rsp != 0;
-
-        if !ok {
+        _ => {
             debug::write(
-                b"Ring 3 second interrupt validation FAILED.\r\n",
+                b"ERROR: Unknown Ring 3 syscall.\r\n",
             );
-        } else {
-            debug::write(
-                b"Ring 3 privilege transition complete.\r\n",
+
+            TEST_PASSED.store(
+                false,
+                Ordering::Relaxed,
             );
+
+            unsafe {
+                *cpu_frame.add(0) =
+                    ring3_kernel_resume as *const () as usize as u64;
+
+                *cpu_frame.add(1) =
+                    KERNEL_CODE_SELECTOR;
+
+                *cpu_frame.add(3) =
+                    kernel_resume_rsp;
+
+                *cpu_frame.add(4) =
+                    0x10;
+            }
         }
-
-        TEST_PASSED.store(ok, Ordering::Relaxed);
-
-        unsafe {
-            *cpu_frame.add(0) =
-                ring3_kernel_resume as *const () as usize as u64;
-            *cpu_frame.add(1) =
-                KERNEL_CODE_SELECTOR;
-            *cpu_frame.add(3) =
-                kernel_resume_rsp;
-            *cpu_frame.add(4) =
-                0x10;
-        }
-
-        return;
-    }
-
-    debug::write(
-        b"ERROR: Unexpected Ring 3 interrupt marker.\r\n",
-    );
-
-    TEST_PASSED.store(
-        false,
-        Ordering::Relaxed,
-    );
-
-    debug::write(
-        b"ERROR: Unexpected Ring 3 interrupt marker.\r\n",
-    );
-
-    TEST_PASSED.store(
-        false,
-        Ordering::Relaxed,
-    );
-
-    unsafe {
-        *cpu_frame.add(0) =
-            ring3_kernel_resume as usize as u64;
-
-        *cpu_frame.add(1) =
-            KERNEL_CODE_SELECTOR;
-
-        *cpu_frame.add(3) =
-            kernel_resume_rsp;
-
-        *cpu_frame.add(4) =
-            0x10;
     }
 }

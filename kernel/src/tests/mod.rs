@@ -118,7 +118,7 @@ impl KernelTestRunner {
         );
     }
 
-        pub fn prepare_ring3_transition(
+    pub fn prepare_ring3_transition(
         &mut self,
         allocator: &mut PhysicalFrameAllocator,
     ) -> bool {

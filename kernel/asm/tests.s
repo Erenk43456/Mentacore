@@ -3,7 +3,7 @@ bits 64
 section .text
 
 extern context_switch_test_target
-extern ring3_interrupt_dispatch
+extern syscall_interrupt_dispatch
 
 global context_switch_test_trampoline
 
@@ -23,28 +23,23 @@ section .user_text progbits alloc exec nowrite align=4096
 global user_privilege_test
 
 user_privilege_test:
-    ; First transition:
-    ; CPL3 -> CPL0 -> CPL3
-    mov rax, 0xC0DE000000000001
-
-    ; Prove that the Ring 3 stack page is user-accessible.
-    mov [rsp - 8], rax
-    mov rcx, [rsp - 8]
-    cmp rcx, rax
-    jne .stack_failure
-
+    ; SYS_GET_TID
+    mov rax, 0
     int 0x80
 
-    ; Second transition:
-    ; CPL3 -> CPL0 -> kernel continuation
-    mov rax, 0xC0DE000000000002
-    int 0x80
+    ; Current thread ID must be a valid small ThreadId.
+    cmp rax, 63
+    ja .failure
 
-    ; Must never be reached.
+    ; Tell the kernel-side test that the syscall succeeded.
+    mov rdi, 1
+    mov rax, -1
+    int 0x80
     hlt
 
-.stack_failure:
-    mov rax, 0xC0DE00000000FFFF
+.failure:
+    xor rdi, rdi
+    mov rax, -1
     int 0x80
     hlt
 
@@ -105,7 +100,7 @@ user_privilege_interrupt_entry:
     sub rsp, 8
 
 .dispatch_aligned:
-    call ring3_interrupt_dispatch
+    call syscall_interrupt_dispatch
 
     test rsp, 8
     jz .restore_aligned

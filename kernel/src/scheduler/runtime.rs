@@ -94,6 +94,11 @@ impl SchedulerRuntime {
         self.scheduler.current()
     }
 
+    pub fn current_thread_id() -> Option<ThreadId> {
+        let guard = SCHEDULER_RUNTIME.lock_irqsave();
+        guard.as_ref().and_then(|runtime| runtime.current())
+    }
+
     pub fn current_state(&self) -> Option<ThreadState> {
         self.current()
             .and_then(|thread_id|
