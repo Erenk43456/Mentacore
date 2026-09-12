@@ -40,6 +40,28 @@ impl IdtEntry {
         self.offset_high = (address >> 32) as u32;
         self.reserved = 0;
     }
+
+    fn set_user_handler(
+        &mut self,
+        handler: unsafe extern "C" fn() -> !,
+        selector: u16,
+    ) {
+        let address = handler as u64;
+
+        self.offset_low = address as u16;
+        self.selector = selector;
+
+        // Present + interrupt gate + DPL 3.
+        self.options = 0x8E00 | (3 << 13);
+
+        self.offset_mid =
+            (address >> 16) as u16;
+
+        self.offset_high =
+            (address >> 32) as u32;
+
+        self.reserved = 0;
+    }
 }
 
 #[repr(C, packed)]
@@ -59,7 +81,12 @@ unsafe extern "C" {
     fn page_fault_entry() -> !;
     fn timer_irq_entry() -> !;
     fn lapic_timer_entry() -> !;
+    #[cfg(feature = "kernel-tests")]
+    fn user_privilege_interrupt_entry() -> !;
 }
+
+#[cfg(feature = "kernel-tests")]
+pub(crate) const USER_TEST_VECTOR: usize = 0x80;
 
 pub(crate) const PAGE_FAULT_VECTOR: usize = 14;
 
@@ -120,6 +147,12 @@ pub(crate) unsafe fn init() {
                 code_segment,
                 0,
             );
+            
+        #[cfg(feature = "kernel-tests")]
+        IDT[USER_TEST_VECTOR].set_user_handler(
+            user_privilege_interrupt_entry,
+            code_segment,
+        );
 
         let idt_pointer = IdtPointer {
             limit: (core::mem::size_of::<IdtEntry>() * 256 - 1)

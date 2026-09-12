@@ -157,6 +157,21 @@ pub extern "C" fn _start(
         }
     }
 
+    #[cfg(feature = "kernel-tests")]
+    {
+        if !test_runner.prepare_ring3_transition(
+            &mut allocator,
+        ) {
+            debug::write(
+                b"ERROR: Failed to prepare Ring 3 transition test.\r\n",
+            );
+
+            loop {
+                cpu::halt();
+            }
+        }
+    }
+
     // ---------------------------------------------------------
     // LAPIC
     // ---------------------------------------------------------
@@ -180,6 +195,9 @@ pub extern "C" fn _start(
     unsafe {
         boot::interrupt_controllers::initialize();
     }
+
+    #[cfg(feature = "kernel-tests")]
+    test_runner.run_ring3_transition();
 
     // ---------------------------------------------------------
     // Display

@@ -10,6 +10,11 @@ SECTIONS
         *(.text*)
     }
 
+    .user_text ALIGN(4K) :
+    {
+        KEEP(*(.user_text*))
+    }
+
     .rodata : ALIGN(4K)
     {
         *(.rodata*)

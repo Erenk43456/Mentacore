@@ -9,6 +9,7 @@ mod cpu;
 mod process;
 mod thread;
 mod scheduler;
+mod ring3;
 
 use crate::debug;
 use crate::memory::physical::PhysicalFrameAllocator;
@@ -114,6 +115,22 @@ impl KernelTestRunner {
         interrupts::run(
             &mut self.runner,
             lapic,
+        );
+    }
+
+        pub fn prepare_ring3_transition(
+        &mut self,
+        allocator: &mut PhysicalFrameAllocator,
+    ) -> bool {
+        ring3::prepare(allocator)
+    }
+
+    pub fn run_ring3_transition(
+        &mut self,
+    ) {
+        self.runner.run(
+            b"interrupts::ring3_transition",
+            ring3::run,
         );
     }
 

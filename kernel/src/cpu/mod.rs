@@ -24,6 +24,8 @@ pub use tss::ist1_stack_range;
 #[cfg(feature = "verbose-boot")]
 pub use tss::ist1_stack_top;
 
+pub use tss::kernel_stack_range;
+
 #[inline]
 pub fn halt() {
     state::halt();
