@@ -106,6 +106,29 @@ impl FrameBitmap {
         }
     }
 
+    pub unsafe fn mark_used_range(
+        &mut self,
+        start_address: u64,
+        page_count: u64,
+    ) {
+        let first_frame =
+            start_address / PAGE_SIZE;
+
+        let end_frame =
+            match first_frame.checked_add(page_count) {
+                Some(value) => value,
+                None => return,
+            };
+
+        for frame_number in first_frame..end_frame {
+            if frame_number >= self.frame_count {
+                break;
+            }
+
+            self.set(frame_number);
+        }
+    }
+
     pub unsafe fn set(&mut self, frame: u64) {
         if frame >= self.frame_count {
             return;

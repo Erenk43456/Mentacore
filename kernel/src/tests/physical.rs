@@ -37,6 +37,16 @@ pub fn run(
         b"physical::contiguous_allocation",
         || test_contiguous_allocation(allocator),
     );
+
+    runner.run(
+        b"physical::reservation",
+        || test_reservation(allocator),
+    );
+
+    runner.run(
+        b"physical::invalid_reservation",
+        || test_invalid_reservation(allocator),
+    );
 }
 
 fn test_frame_free(
@@ -214,4 +224,96 @@ fn test_contiguous_allocation(
     }
 
     true
+}
+
+fn test_reservation(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let frame =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => return false,
+        };
+
+    let address =
+        frame.start_address;
+
+    if allocator
+        .free_frame(frame)
+        .is_err()
+    {
+        return false;
+    }
+
+    if allocator
+        .reserve_range(
+            address,
+            memory::paging::PAGE_SIZE,
+        )
+        .is_err()
+    {
+        return false;
+    }
+
+    let reserved =
+        memory::physical::Frame {
+            start_address: address,
+        };
+
+    if !allocator
+        .is_frame_used(reserved)
+        .unwrap_or(false)
+    {
+        return false;
+    }
+
+    let next =
+        match allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => return false,
+        };
+
+    next.start_address != address
+}
+
+fn test_invalid_reservation(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    if allocator
+        .reserve_range(
+            0x1234,
+            memory::paging::PAGE_SIZE,
+        )
+        .is_ok()
+    {
+        return false;
+    }
+
+    if allocator
+        .reserve_range(
+            0,
+            0,
+        )
+        .is_ok()
+    {
+        return false;
+    }
+
+    let out_of_range =
+        match allocator
+            .frame_count()
+            .checked_mul(
+                memory::paging::PAGE_SIZE,
+            )
+        {
+            Some(address) => address,
+            None => return false,
+        };
+
+    allocator
+        .reserve_range(
+            out_of_range,
+            memory::paging::PAGE_SIZE,
+        )
+        .is_err()
 }

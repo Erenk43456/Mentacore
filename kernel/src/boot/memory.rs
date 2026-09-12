@@ -247,8 +247,26 @@ pub unsafe fn initialize(
         let _ = descriptor;
     }
 
-    let allocator =
+    let mut allocator =
         PhysicalFrameAllocator::new(frame_bitmap);
+
+    if boot_info.userspace_image_size != 0 {
+        if allocator
+            .reserve_range(
+                boot_info.userspace_image_addr,
+                boot_info.userspace_image_size,
+            )
+            .is_err()
+        {
+            debug::write(
+                b"ERROR: Failed to reserve userspace image.\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
 
     debug::write(
         b"Memory initialized.\r\n"

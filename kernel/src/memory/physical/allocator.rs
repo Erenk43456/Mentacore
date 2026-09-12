@@ -152,6 +152,47 @@ impl PhysicalFrameAllocator {
         None
     }
 
+    pub fn reserve_range(
+        &mut self,
+        start_address: u64,
+        size: u64,
+    ) -> Result<(), ()> {
+        if start_address & (PAGE_SIZE - 1) != 0 {
+            return Err(());
+        }
+
+        if size == 0 {
+            return Err(());
+        }
+
+        let page_count =
+            size
+                .checked_add(PAGE_SIZE - 1)
+                .ok_or(())?
+                / PAGE_SIZE;
+
+        let first_frame =
+            start_address / PAGE_SIZE;
+
+        let end_frame =
+            first_frame
+                .checked_add(page_count)
+                .ok_or(())?;
+
+        if end_frame > self.bitmap.frame_count() {
+            return Err(());
+        }
+
+        unsafe {
+            self.bitmap.mark_used_range(
+                start_address,
+                page_count,
+            );
+        }
+
+        Ok(())
+    }
+
     pub fn free_frame(
         &mut self,
         frame: Frame,
