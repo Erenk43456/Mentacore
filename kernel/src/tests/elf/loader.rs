@@ -168,6 +168,11 @@ pub fn run(
         b"elf::loader_segment",
         || test_loader_segment(allocator),
     );
+
+    runner.run(
+        b"elf::loader_user_stack",
+        || test_loader_user_stack(allocator),
+    );
 }
 
 fn test_loader_entry(
@@ -266,6 +271,95 @@ fn test_loader_segment(
 
         if actual != 0 {
             return false;
+        }
+    }
+
+    true
+}
+
+fn test_loader_user_stack(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let data = fixture();
+
+    let mut loaded =
+        match unsafe {
+            load_elf(
+                &data,
+                allocator,
+            )
+        } {
+            Ok(value) => value,
+            Err(_) => return false,
+        };
+
+    let expected_top =
+        crate::memory::paging::USER_SPACE_END
+            & !(PAGE_SIZE - 1);
+
+    let expected_base =
+        expected_top
+            - 4 * PAGE_SIZE;
+
+    let stack_top =
+        match unsafe {
+            loaded.map_user_stack(allocator)
+        } {
+            Ok(value) => value,
+            Err(_) => return false,
+        };
+
+    if stack_top != expected_top {
+        return false;
+    }
+
+    if loaded.user_stack_top()
+        != expected_top
+    {
+        return false;
+    }
+
+    for page_index in 0..4u64 {
+        let virtual_address =
+            expected_base
+                + page_index * PAGE_SIZE;
+
+        let physical_address =
+            match unsafe {
+                loaded
+                    .address_space()
+                    .unmap(virtual_address)
+            } {
+                Ok(address) => address,
+                Err(_) => return false,
+            };
+
+        let frame =
+            Frame {
+                start_address:
+                    physical_address,
+            };
+
+        if !allocator
+            .is_frame_used(frame)
+            .unwrap_or(false)
+        {
+            return false;
+        }
+
+        let ptr =
+            physical_address
+                as *const u8;
+
+        for index in 0..PAGE_SIZE as usize {
+            let value =
+                unsafe {
+                    ptr.add(index).read()
+                };
+
+            if value != 0 {
+                return false;
+            }
         }
     }
 
