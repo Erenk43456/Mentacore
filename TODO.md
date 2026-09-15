@@ -172,39 +172,39 @@
 
 ## 3.1 Process Infrastructure
 
-* [ ] Define process abstraction
-* [ ] Define thread abstraction
-* [ ] Define process states
-* [ ] Define kernel stack per thread
-* [ ] Implement context representation
-* [ ] Implement context switching
-* [ ] Implement process address spaces
-* [ ] Implement user page tables
+* [x] Define process abstraction
+* [x] Define thread abstraction
+* [x] Define process states
+* [x] Define kernel stack per thread
+* [x] Implement context representation
+* [x] Implement context switching
+* [x] Implement process address spaces
+* [x] Implement user page tables
 
 ## 3.2 Scheduler
 
-* [ ] Define scheduler architecture
-* [ ] Implement runnable queue
-* [ ] Implement basic scheduler
-* [ ] Implement timer-driven scheduling
-* [ ] Implement context switching
-* [ ] Implement idle thread
+* [x] Define scheduler architecture
+* [x] Implement runnable queue
+* [x] Implement basic scheduler
+* [x] Implement timer-driven scheduling
+* [x] Implement context switching
+* [x] Implement idle thread
 
 ## 3.3 System Calls
 
-* [ ] Define syscall ABI
-* [ ] Implement syscall entry
-* [ ] Implement syscall dispatch
-* [ ] Define process-related syscalls
+* [x] Define syscall ABI
+* [x] Implement syscall entry
+* [x] Implement syscall dispatch
+* [x] Define process-related syscalls
 * [ ] Define memory-related syscalls
 * [ ] Define filesystem-related syscalls
-* [ ] Validate user/kernel boundary
+* [x] Validate user/kernel boundary
 
 ## 3.4 Userspace
 
-* [ ] Create first userspace address space
-* [ ] Load a userspace executable
-* [ ] Start first userspace process
+* [x] Create first userspace address space
+* [x] Load a userspace executable
+* [x] Start first userspace process
 * [ ] Implement basic userspace runtime
 * [ ] Implement userspace services
 

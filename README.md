@@ -67,7 +67,7 @@ Phase 1 established the boot, memory-management, virtual-memory, heap, and frame
 
 Phase 2 established CPU state management, interrupt and exception infrastructure, hardware timer support, and interrupt-safe kernel synchronization.
 
-Phase 3 is now focused on introducing processes, threads, address spaces, scheduling, system calls, and userspace infrastructure.
+Phase 3 now provides process and thread abstractions, user address spaces, scheduling infrastructure, system calls, and initial userspace execution.
 
 ## Bootloader
 
@@ -131,6 +131,14 @@ The kernel currently provides:
 * Kernel spinlock
 * Interrupt-safe spinlock locking
 * Synchronized physical frame allocator access from exception context
+* Process and thread management
+* Per-thread kernel stacks
+* Kernel context switching
+* User address spaces
+* Ring 3 userspace execution
+* Timer-driven scheduler infrastructure
+* System call entry and dispatch
+* Basic userspace process launch
 
 ## Kernel Initialization Architecture
 
@@ -181,47 +189,137 @@ The current test suites cover:
 * Synchronization primitives
 * Timer behavior
 * TSC calibration
+* Process and thread management
+* Scheduler behavior
+* Context switching
+* System calls
+* Ring 3 userspace execution
+* ELF loading
 
 The complete kernel test suite currently validates:
 
 ```text
-25/25 TESTS PASSED
+95/95 TESTS PASSED
 ALL TESTS PASSED
 ```
 
-Current validated tests include:
+Current validated areas include:
 
 ```text
-PHYSICAL FRAME FREE TEST OK
-PHYSICAL FRAME REUSE TEST OK
-PHYSICAL FRAME COUNTER TEST OK
-PHYSICAL FRAME DOUBLE-FREE TEST OK
-PHYSICAL FRAME INVALID TEST OK
+PHYSICAL MEMORY
+├── Frame allocation and freeing
+├── Frame reuse
+├── Allocation counters
+├── Double-free detection
+├── Invalid-frame detection
+├── Contiguous allocation
+├── Frame reservation
+├── Invalid reservation detection
+├── Allocation below address limits
+└── Conventional memory below 4 GiB
 
-PAGING DUPLICATE MAP TEST OK
-PAGING MAPPING TEST OK
-PAGING UNMAP TEST OK
-PAGING UNMAP REJECTION TEST OK
-PAGING USER MAPPING PERMISSIONS TEST OK
-PAGING VIRTUAL ADDRESS LAYOUT TEST OK
-ADDRESS SPACE ABSTRACTION TEST OK
-ADDRESS SPACE MAPPING TEST OK
-ADDRESS SPACE UNMAPPING TEST OK
+PAGING AND ADDRESS SPACES
+├── Duplicate mapping rejection
+├── Page mapping and unmapping
+├── Invalid unmapping rejection
+├── User mapping permissions
+├── Virtual address layout
+├── Address-space creation
+├── Address-space mapping
+├── Address-space unmapping
+├── NX page flags
+└── Physical-to-virtual mapping
 
-HEAP TEST OK
-HEAP MULTI-PAGE TEST OK
+ELF
+├── ELF header validation
+├── Load segment handling
+├── Zero-memory segments
+├── Segment data loading
+├── Invalid ELF detection
+├── Truncated header detection
+├── Program-header bounds validation
+├── Segment size validation
+├── Segment alignment validation
+├── Missing load-segment detection
+├── Entry-point validation
+├── File-range validation
+├── Kernel-space segment rejection
+├── ELF entry loading
+├── ELF segment loading
+└── Overlapping-segment rejection
 
-INTERRUPT STATE TEST OK
-TRAP FRAME LAYOUT TEST OK
-TIMER STACK ALIGNMENT TEST OK
-TIMER STABILITY TEST OK
-LAPIC TIMER STACK ALIGNMENT TEST OK
-DOUBLE FAULT IST1 TEST OK
+PROCESS AND THREADS
+├── Process creation
+├── Process state management
+├── Thread creation
+├── Thread state management
+├── Kernel context
+├── User interrupt context
+├── Kernel interrupt context
+├── Context layout
+├── Context switching
+├── Context startup
+├── Kernel stacks
+├── Kernel stack validation
+├── Direct kernel-stack allocation
+├── Thread manager creation
+├── Thread manager operations
+├── Kernel-stack allocation
+├── Kernel-stack cleanup
+└── Address-space cleanup
 
-SPINLOCK TEST OK
-SPINLOCK INTERRUPT-SAFE TEST OK
+SCHEDULER
+├── Scheduler creation
+├── Runnable queue creation
+├── Queue insertion
+├── Duplicate-thread rejection
+├── Queue removal
+├── Missing-thread removal
+├── Round-robin selection
+├── Current-thread removal
+├── Empty-queue handling
+├── Managed-thread validation
+├── Unknown-thread rejection
+├── Managed-thread selection
+├── Thread-state transitions
+├── Scheduler context switching
+├── Runtime initialization
+├── Missing-thread handling
+├── Replacement-thread selection
+├── Preemption
+└── Timer-driven preemption
 
-TSC CALIBRATION OK
+SYSTEM CALLS AND USERSPACE
+├── Syscall register context
+├── Thread ID syscall
+├── Unknown syscall handling
+├── User-address validation
+├── User-buffer validation
+├── Ring 3 transition
+└── Ring 3 syscall execution
+
+HEAP
+├── Basic allocation
+└── Multi-page allocation with demand paging
+
+CPU AND INTERRUPTS
+├── TSC calibration
+├── User GDT segments
+├── Interrupt state handling
+├── Trap-frame layout
+├── Timer stack alignment
+├── Timer stability
+├── LAPIC timer stack alignment
+├── LAPIC timer periodic behavior
+└── Timer context handling
+
+SYNCHRONIZATION
+├── Spinlock behavior
+├── Interrupt-safe spinlocks
+└── Interrupt-context spinlocks
+
+EXCEPTION HANDLING
+└── Double-fault handling with IST1
 ```
 
 The test infrastructure is intentionally implemented inside the kernel so low-level subsystems can be validated in the actual `no_std` execution environment.
@@ -242,6 +340,7 @@ The test runner:
 * Reports the final test result
 * Fails on timeout
 * Fails when the kernel reports a test failure
+* Validates userspace startup after kernel test completion
 
 This provides a repeatable regression-testing workflow without depending on the interactive development runner.
 
@@ -288,12 +387,14 @@ This provides the foundation required for increasingly concurrent kernel subsyst
 ### Phase 3 — Processes and Userspace
 
 ```text
-├── Process abstraction
-├── Thread abstraction
-├── Address spaces
-├── Scheduler
-├── System calls
-└── Userspace runtime
+✓ Process abstraction
+✓ Thread abstraction
+✓ Address spaces
+✓ Scheduler infrastructure
+✓ System call infrastructure
+✓ Initial userspace execution
+├── Full userspace runtime
+└── Userspace services
 ```
 
 ### Phase 4 — Filesystem and OS Services
@@ -366,7 +467,9 @@ The goal is not simply to produce a bootable kernel, but to build a complete ope
 * **Kernel:** Custom `no_std` Rust kernel
 * **Virtualization / Testing:** QEMU
 * **Memory Management:** Physical frame allocator, page tables, demand-paged kernel heap
-* **Interrupts:** x86_64 IDT, LAPIC, PIT
+* **Interrupts:** x86_64 IDT, LAPIC, PIT, IST1
+* **Scheduling:** Timer-driven thread scheduling and context switching
+* **Userspace:** Ring 3 execution, ELF loading, system calls
 * **Synchronization:** Kernel spinlock with interrupt-safe locking
 * **Runtime:** Planned native Python runtime
 * **AI Layer:** Planned Python-based AI kernel
