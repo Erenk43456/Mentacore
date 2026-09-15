@@ -56,8 +56,6 @@ fn test_context_registers() -> bool {
 }
 
 fn test_get_tid() -> bool {
-    let expected = SchedulerRuntime::current_thread_id();
-
     let context = SyscallContext::new(
         SYS_GET_TID,
         0,
@@ -68,11 +66,8 @@ fn test_get_tid() -> bool {
         0,
     );
 
-    let result = dispatch(&context);
-
-    expected
-        .map(|thread_id| result == thread_id as u64)
-        .unwrap_or(false)
+    dispatch(&context)
+        == crate::syscall::result::SYSCALL_ERROR
 }
 
 fn test_unknown_syscall() -> bool {

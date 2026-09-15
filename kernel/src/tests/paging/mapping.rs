@@ -39,6 +39,7 @@ pub(super) fn test_duplicate_mapping(
                     writable: true,
                     cache_disable: false,
                     user: false,
+                    executable: false,
                 },
             )
             .is_err()
@@ -64,6 +65,7 @@ pub(super) fn test_duplicate_mapping(
                     writable: true,
                     cache_disable: false,
                     user: false,
+                    executable: false,
                 },
             )
             .is_ok()
@@ -112,6 +114,7 @@ pub(super) fn test_mapping(
                     writable: true,
                     cache_disable: false,
                     user: false,
+                    executable: false,
                 },
             )
             .is_err()
@@ -184,6 +187,7 @@ pub(super) fn test_unmap(
                     writable: true,
                     cache_disable: false,
                     user: false,
+                    executable: false,
                 },
             )
             .is_err()
@@ -276,6 +280,7 @@ pub(super) fn test_unmap(
                     writable: true,
                     cache_disable: false,
                     user: false,
+                    executable: false,
                 },
             )
             .is_err()
@@ -397,6 +402,7 @@ pub(super) fn test_user_mapping_permissions(
                     writable: true,
                     cache_disable: false,
                     user: true,
+                    executable: false,
                 },
             )
             .is_err()
@@ -455,6 +461,7 @@ pub(super) fn test_user_mapping_permissions(
                     writable: true,
                     cache_disable: false,
                     user: false,
+                    executable: false,
                 },
             )
             .is_err()
@@ -498,6 +505,7 @@ pub(super) fn test_user_mapping_permissions(
                     writable: true,
                     cache_disable: false,
                     user: true,
+                    executable: false,
                 },
             )
             .is_ok()
@@ -527,6 +535,7 @@ pub(super) fn test_user_mapping_permissions(
                     writable: true,
                     cache_disable: false,
                     user: true,
+                    executable: false,
                 },
             )
             .is_ok()
@@ -536,4 +545,60 @@ pub(super) fn test_user_mapping_permissions(
     }
 
     true
+}
+
+#[cfg(feature = "kernel-tests")]
+pub fn nx_page_flags() -> bool {
+    let executable_entry =
+        memory::paging::test_flags_to_entry(
+            memory::paging::PageFlags {
+                writable: false,
+                cache_disable: false,
+                user: true,
+                executable: true,
+            },
+        );
+
+    let non_executable_entry =
+        memory::paging::test_flags_to_entry(
+            memory::paging::PageFlags {
+                writable: false,
+                cache_disable: false,
+                user: true,
+                executable: false,
+            },
+        );
+
+    let nx = 1u64 << 63;
+
+    executable_entry & nx == 0
+        && non_executable_entry & nx != 0
+}
+
+#[cfg(feature = "kernel-tests")]
+pub fn physical_to_virtual_mapping() -> bool {
+    let test_cases = [
+        0x0000_0000_0000_0000u64,
+        0x0000_0001_0000_0000u64,
+        0x0000_0020_0000_0000u64,
+        0x0000_001F_FFFF_F000u64,
+    ];
+
+    for physical in test_cases {
+        let expected =
+            crate::memory::paging::PHYS_MAP_BASE
+                .checked_add(physical);
+
+        if crate::memory::paging::physical_to_virtual(
+            physical,
+        ) != expected
+        {
+            return false;
+        }
+    }
+
+    crate::memory::paging::physical_to_virtual(
+        u64::MAX,
+    )
+    .is_none()
 }

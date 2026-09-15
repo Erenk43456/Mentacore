@@ -95,6 +95,9 @@ impl<'a> MemoryMap<'a> {
         // Physical address 0 is intentionally avoided.
         const MIN_ADDRESS: u64 = 0x0010_0000;
 
+        // Bitmap must remain in the identity-mapped physical range.
+        const MAX_ADDRESS: u64 = 0x1_0000_0000;
+
         for index in 0..self.descriptor_count() {
             let descriptor = unsafe {
                 self.descriptor(index)?
@@ -105,14 +108,17 @@ impl<'a> MemoryMap<'a> {
             }
 
             let region_start =
-                descriptor.physical_start.max(MIN_ADDRESS);
+                descriptor
+                    .physical_start
+                    .max(MIN_ADDRESS);
 
             let region_end =
                 descriptor
                     .physical_start
                     .checked_add(
                         descriptor.number_of_pages.checked_mul(4096)?
-                    )?;
+                    )?
+                    .min(MAX_ADDRESS);
 
             if region_end <= region_start {
                 continue;

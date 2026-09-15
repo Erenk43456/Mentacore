@@ -1,5 +1,5 @@
 use super::{
-    table::allocate_table,
+    table::allocate_table_below,
     PageTable,
     ENTRY_COUNT,
     HUGE_PAGE_SIZE,
@@ -52,7 +52,12 @@ pub(super) fn map_framebuffer(
                 % ENTRY_COUNT as u64) as usize;
 
         let (page_table_address, page_table) =
-            unsafe { allocate_table(allocator)? };
+            unsafe { 
+                allocate_table_below(
+                    allocator,
+                    IDENTITY_MAP_SIZE,
+                )? 
+            };
 
         unsafe {
             (*pd2).entries[pd_index] =

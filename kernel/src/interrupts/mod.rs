@@ -9,6 +9,12 @@ pub use timer::timer_ticks;
 pub use timer::LAPIC_TIMER_VECTOR;
 
 #[cfg(feature = "kernel-tests")]
+pub use timer::{
+    disable_lapic_timer_preemption,
+    enable_lapic_timer_preemption,
+};
+
+#[cfg(feature = "kernel-tests")]
 pub(crate) use idt::USER_TEST_VECTOR;
 
 #[cfg(feature = "kernel-tests")]
@@ -115,9 +121,7 @@ pub fn validate_interrupt_context_layout() -> bool {
 pub unsafe fn init(
     allocator: PhysicalFrameAllocator,
 ) {
-    exceptions::set_frame_allocator(
-        allocator,
-    );
+    crate::memory::physical::set_frame_allocator(allocator);
 
     unsafe {
         idt::init();

@@ -419,6 +419,9 @@ fn main() -> Status {
         }
     };
 
+    boot_info.kernel_image_addr = kernel_start;
+    boot_info.kernel_image_size = kernel_size;
+
     boot_info.userspace_image_addr = userspace_image_addr;
 
     println!(
@@ -579,6 +582,9 @@ fn get_framebuffer_info() -> Result<BootInfo, ()> {
         framebuffer_height: height as u32,
         framebuffer_stride: stride as u32,
         framebuffer_format,
+
+        kernel_image_addr: 0,
+        kernel_image_size: 0,
 
         userspace_image_addr: 0,
         userspace_image_size: 0,

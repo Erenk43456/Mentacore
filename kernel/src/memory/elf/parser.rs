@@ -173,13 +173,24 @@ fn validate_file_range(
 fn validate_memory_range(
     segment: &LoadSegment,
 ) -> Result<(), ElfError> {
+    if segment.memory_size == 0 {
+        return Ok(());
+    }
+
     let end = segment
         .virtual_address
         .checked_add(segment.memory_size)
         .ok_or(ElfError::IntegerOverflow)?;
 
-    if segment.memory_size != 0
-        && !is_canonical_address(end - 1)
+    let last = end - 1;
+
+    if !is_canonical_address(last) {
+        return Err(ElfError::NonCanonicalAddress);
+    }
+
+    if !crate::memory::paging::is_user_address(
+        segment.virtual_address,
+    ) || !crate::memory::paging::is_user_address(last)
     {
         return Err(ElfError::NonCanonicalAddress);
     }

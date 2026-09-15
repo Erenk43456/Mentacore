@@ -57,23 +57,6 @@ pub unsafe fn initialize(
             }
         };
 
-    let _bitmap_size =
-        match memory::physical::bitmap_size_bytes(
-            frame_count,
-        ) {
-            Some(size) => size,
-
-            None => {
-                debug::write(
-                    b"ERROR: Failed to calculate bitmap size.\r\n"
-                );
-
-                loop {
-                    core::hint::spin_loop();
-                }
-            }
-        };
-
     let bitmap_pages =
         match memory::physical::bitmap_page_count(
             frame_count,
@@ -224,31 +207,26 @@ pub unsafe fn initialize(
         }
     }
 
-    for index in 0..memory_map.descriptor_count() {
-        let descriptor =
-            match unsafe {
-                memory_map.descriptor(index)
-            } {
-                Some(descriptor) => descriptor,
-
-                None => {
-                    debug::write(
-                        b"ERROR: Failed to read descriptor\r\n"
-                    );
-
-                    loop {
-                        core::hint::spin_loop();
-                    }
-                }
-            };
-
-        // Descriptor validation/traversal is intentionally
-        // preserved even though normal boot logging is disabled.
-        let _ = descriptor;
-    }
-
     let mut allocator =
         PhysicalFrameAllocator::new(frame_bitmap);
+
+    if boot_info.kernel_image_size != 0 {
+        if allocator
+            .reserve_range(
+                boot_info.kernel_image_addr,
+                boot_info.kernel_image_size,
+            )
+            .is_err()
+        {
+            debug::write(
+                b"ERROR: Failed to reserve kernel image.\r\n"
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+    }
 
     if boot_info.userspace_image_size != 0 {
         if allocator

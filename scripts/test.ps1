@@ -236,10 +236,13 @@ $QemuJob = Start-Job -ScriptBlock {
 } -ArgumentList $Qemu, $QemuArguments
 
 $TimeoutSeconds = 60
+$UserspaceTimeoutSeconds = 5
 $ElapsedSeconds = 0
+$UserspaceElapsedSeconds = 0
 
 $TestPassed = $false
 $TestFailed = $false
+$UserspaceStarted = $false
 
 while ($ElapsedSeconds -lt $TimeoutSeconds) {
 
@@ -255,7 +258,23 @@ while ($ElapsedSeconds -lt $TimeoutSeconds) {
 
         if ($LogText -match "ALL TESTS PASSED") {
             $TestPassed = $true
-            break
+        }
+
+        if ($LogText -match "USERSPACE _START EXECUTED") {
+            $UserspaceStarted = $true
+        }
+
+        if ($TestPassed) {
+
+            if ($UserspaceStarted) {
+                break
+            }
+
+            $UserspaceElapsedSeconds++
+
+            if ($UserspaceElapsedSeconds -ge $UserspaceTimeoutSeconds) {
+                break
+            }
         }
 
         if ($LogText -match "TESTS FAILED") {
@@ -370,7 +389,7 @@ Write-Host "========================================"
 Write-Host "        MENTACORE TEST RESULT"
 Write-Host "========================================"
 
-if ($TestPassed) {
+if ($TestPassed -and $UserspaceStarted) {
 
     Write-Host "PASS" -ForegroundColor Green
     Write-Host ""
@@ -395,6 +414,11 @@ Write-Host ""
 if ($TestFailed) {
 
     Write-Host "Reason: Kernel reported test failure." `
+        -ForegroundColor Red
+}
+elseif ($TestPassed -and -not $UserspaceStarted) {
+
+    Write-Host "Reason: Kernel tests passed, but userspace did not start within $UserspaceTimeoutSeconds seconds." `
         -ForegroundColor Red
 }
 elseif ($ElapsedSeconds -ge $TimeoutSeconds) {

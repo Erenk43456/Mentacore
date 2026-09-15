@@ -234,6 +234,64 @@ fn test_file_range_out_of_bounds() -> bool {
     )
 }
 
+fn test_zero_memory_segment() -> bool {
+    let mut data = valid_elf();
+
+    let ph = 0x40 + 56;
+
+    write_u16(&mut data, 56, 2); // e_phnum
+
+    write_u32(&mut data, ph, 1); // PT_LOAD
+    write_u32(&mut data, ph + 4, 0x4); // PF_R
+
+    write_u64(&mut data, ph + 8, 0); // offset
+    write_u64(&mut data, ph + 16, u64::MAX); // virtual address
+    write_u64(&mut data, ph + 24, u64::MAX); // physical address
+
+    write_u64(&mut data, ph + 32, 0); // filesz
+    write_u64(&mut data, ph + 40, 0); // memsz
+    write_u64(&mut data, ph + 48, 1); // alignment
+
+    matches!(
+        ParsedElf::parse(&data),
+        Ok(elf) if elf.segment_count() == 2
+    )
+}
+
+fn test_kernel_space_segment_rejected() -> bool {
+    let mut data = valid_elf();
+
+    let kernel_address =
+        0xFFFF_FFFF_8000_0000u64;
+
+    let ph = 0x40;
+
+    // Entry must remain inside the segment so that
+    // EntryNotInLoadSegment does not mask the test.
+    write_u64(
+        &mut data,
+        24,
+        kernel_address,
+    );
+
+    write_u64(
+        &mut data,
+        ph + 16,
+        kernel_address,
+    );
+
+    write_u64(
+        &mut data,
+        ph + 24,
+        kernel_address,
+    );
+
+    matches!(
+        ParsedElf::parse(&data),
+        Err(ElfError::NonCanonicalAddress)
+    )
+}
+
 pub fn run(
     runner: &mut TestRunner,
     allocator: &mut PhysicalFrameAllocator,
@@ -246,6 +304,11 @@ pub fn run(
     runner.run(
         b"elf::load_segment",
         test_load_segment,
+    );
+
+    runner.run(
+        b"elf::zero_memory_segment",
+        test_zero_memory_segment,
     );
 
     runner.run(
@@ -291,6 +354,11 @@ pub fn run(
     runner.run(
         b"elf::file_range_out_of_bounds",
         test_file_range_out_of_bounds,
+    );
+
+    runner.run(
+        b"elf::kernel_space_segment_rejected",
+        test_kernel_space_segment_rejected,
     );
 
     loader::run(

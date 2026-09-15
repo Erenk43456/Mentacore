@@ -40,8 +40,9 @@ fn main() {
         ("exceptions.s", "exceptions.o"),
         ("timer.s", "timer.o"),
         ("cpu.s", "cpu.o"),
+        ("syscall.s", "syscall.o"),
     ];
-
+    
     if env::var_os("CARGO_FEATURE_KERNEL_TESTS").is_some() {
         sources.push(("tests.s", "tests.o"));
     }

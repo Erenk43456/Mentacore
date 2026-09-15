@@ -3,6 +3,7 @@ use crate::memory::paging::{
     PageFlags,
     IDENTITY_MAP_SIZE,
     PAGE_SIZE,
+    user_page_physical_address,
 };
 
 use crate::memory::physical::PhysicalFrameAllocator;
@@ -118,7 +119,7 @@ impl LoadedElf {
                     PAGE_SIZE as usize,
                 );
 
-                self.address_space.map(
+                self.address_space.map_owned(
                     allocator,
                     virtual_address,
                     frame.start_address,
@@ -126,8 +127,9 @@ impl LoadedElf {
                         writable: true,
                         cache_disable: false,
                         user: true,
-                    },
-                )?;
+                        executable: false,
+                    }
+                )?
             }
         }
 
@@ -234,6 +236,7 @@ unsafe fn load_segment(
         writable: segment.flags.writable,
         cache_disable: false,
         user: true,
+        executable: segment.flags.executable,
     };
 
     let mut first_physical_address = 0u64;
@@ -252,47 +255,76 @@ unsafe fn load_segment(
                     ElfLoadError::AddressOverflow,
                 )?;
 
-        let frame =
-            allocator
-                .allocate_frame()
-                .ok_or(
-                    ElfLoadError::AllocationFailed,
-                )?;
+        let existing_physical =
+            unsafe {
+                user_page_physical_address(
+                    address_space.pml4(),
+                    page_address,
+                )
+            };
 
-        let physical_address =
-            frame.start_address;
+        let (physical_address, newly_allocated) =
+            match existing_physical {
+                Some(physical_address) => {
+                    (physical_address, false)
+                }
 
-        if physical_address
-            >= IDENTITY_MAP_SIZE
-        {
-            return Err(
-                ElfLoadError::
-                    PhysicalAddressOutsideIdentityMap,
-            );
-        }
+                None => {
+                    let frame =
+                        allocator
+                            .allocate_frame()
+                            .ok_or(
+                                ElfLoadError::AllocationFailed,
+                            )?;
+
+                    let physical_address =
+                        frame.start_address;
+
+                    if physical_address
+                        >= IDENTITY_MAP_SIZE
+                    {
+                        let _ =
+                            allocator.free_frame(frame);
+
+                        return Err(
+                            ElfLoadError::
+                                PhysicalAddressOutsideIdentityMap,
+                        );
+                    }
+
+                    let mapping_result = unsafe {
+                        address_space.map_owned(
+                            allocator,
+                            page_address,
+                            physical_address,
+                            flags,
+                        )
+                    };
+
+                    if mapping_result.is_err() {
+                        let _ =
+                            allocator.free_frame(frame);
+
+                        return Err(
+                            ElfLoadError::MappingFailed,
+                        );
+                    }
+
+                    (physical_address, true)
+                }
+            };
 
         if page_index == 0 {
             first_physical_address =
                 physical_address;
         }
 
-        unsafe {
-            address_space
-                .map(
-                    allocator,
-                    page_address,
+        if newly_allocated {
+            unsafe {
+                zero_page(
                     physical_address,
-                    flags,
-                )
-                .map_err(
-                    |_| ElfLoadError::MappingFailed,
-                )?;
-        }
-
-        unsafe {
-            zero_page(
-                physical_address,
-            );
+                );
+            }
         }
 
         unsafe {

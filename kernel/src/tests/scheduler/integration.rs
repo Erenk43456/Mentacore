@@ -17,12 +17,30 @@ use crate::thread::{
 static TIMER_PREEMPTION_WORKER_RUNS: AtomicU64 =
     AtomicU64::new(0);
 
+static mut TIMER_PREEMPTION_RETURN_TARGET:
+    crate::thread::KernelContext =
+    crate::thread::KernelContext::new(0, 0);
+
+static mut TIMER_PREEMPTION_WORKER_CONTEXT:
+    crate::thread::KernelContext =
+    crate::thread::KernelContext::new(0, 0);
+
 extern "C" fn timer_preemption_worker() -> ! {
     loop {
-        TIMER_PREEMPTION_WORKER_RUNS.fetch_add(
-            1,
-            Ordering::Relaxed,
-        );
+        let runs =
+            TIMER_PREEMPTION_WORKER_RUNS.fetch_add(
+                1,
+                Ordering::Relaxed,
+            ) + 1;
+
+        if runs >= 2 {
+            unsafe {
+                crate::thread::context_switch(
+                    &raw mut TIMER_PREEMPTION_WORKER_CONTEXT,
+                    &raw const TIMER_PREEMPTION_RETURN_TARGET,
+                );
+            }
+        }
 
         crate::cpu::halt();
     }
@@ -36,13 +54,18 @@ pub(super) fn prepare_timer_preemption(
         Ordering::Relaxed,
     );
 
-    SchedulerRuntime::prepare_thread(
+    if SchedulerRuntime::prepare_thread(
         1,
         crate::scheduler::KERNEL_PROCESS_ID,
         allocator,
         timer_preemption_worker,
     )
-    .is_ok()
+    .is_err()
+    {
+        return false;
+    }
+
+    SchedulerRuntime::activate_thread(1).is_ok()
 }
 
 extern "C" fn scheduler_test_entry() -> ! {
@@ -327,13 +350,11 @@ pub(super) fn scheduler_runtime_starts_idle_thread(
             Err(()) => return false,
         };
 
-    if runtime.current()
-        != Some(IDLE_THREAD_ID)
-    {
+    if runtime.current().is_some() {
         return false;
     }
 
-    if runtime.scheduler().count() != 1 {
+    if runtime.scheduler().count() != 0 {
         return false;
     }
 
@@ -345,10 +366,14 @@ pub(super) fn scheduler_runtime_starts_idle_thread(
         return false;
     }
 
-    runtime.current_state()
-        == Some(
-            crate::thread::ThreadState::Running
-        )
+    runtime
+        .thread_manager()
+        .get(IDLE_THREAD_ID)
+        .map(|thread| {
+            thread.state()
+                == crate::thread::ThreadState::Ready
+        })
+        == Some(true)
 }
 
 pub(super) fn scheduler_preempts_thread(
@@ -403,7 +428,10 @@ pub(super) fn scheduler_preempts_thread(
      * interrupt entry path.
      */
     let current_rsp =
-        0x001d_0000_u64;
+        match manager.get(1) {
+            Some(thread) => thread.interrupt_rsp(),
+            None => return false,
+        };
 
     let next_rsp =
         match scheduler.preempt(
@@ -477,20 +505,170 @@ pub(super) fn scheduler_preempts_thread(
 }
 
 pub(super) fn scheduler_timer_preemption() -> bool {
-    if SchedulerRuntime::activate_thread(1).is_err() {
+    TIMER_PREEMPTION_WORKER_RUNS.store(
+        0,
+        Ordering::Relaxed,
+    );
+
+    if SchedulerRuntime::start_thread(1).is_err() {
         return false;
     }
 
-    for _ in 0..5_000_000 {
-        if TIMER_PREEMPTION_WORKER_RUNS.load(
-            Ordering::Relaxed,
-        ) >= 2
-        {
-            return true;
-        }
+    crate::interrupts::enable_lapic_timer_preemption();
 
-        core::hint::spin_loop();
+    let worker_context = {
+        let guard =
+            crate::scheduler::SCHEDULER_RUNTIME
+                .lock_irqsave();
+
+        let runtime =
+            match guard.as_ref() {
+                Some(runtime) => runtime,
+                None => {
+                    crate::interrupts
+                        ::disable_lapic_timer_preemption();
+                    return false;
+                }
+            };
+
+        let thread =
+            match runtime.thread_manager().get(1) {
+                Some(thread) => thread,
+                None => {
+                    crate::interrupts
+                        ::disable_lapic_timer_preemption();
+                    return false;
+                }
+            };
+
+        core::ptr::addr_of!(*thread.context())
+    };
+
+    unsafe {
+        crate::thread::context_switch(
+            &raw mut TIMER_PREEMPTION_RETURN_TARGET,
+            worker_context,
+        );
     }
 
-    false
+    crate::interrupts::disable_lapic_timer_preemption();
+
+    TIMER_PREEMPTION_WORKER_RUNS.load(
+        Ordering::Relaxed,
+    ) >= 2
+}
+
+pub(super) fn scheduler_preserves_state_on_missing_thread(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let mut manager = ThreadManager::new();
+    let mut scheduler = Scheduler::new();
+
+    if manager.create(
+        1,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
+        return false;
+    }
+
+    if manager.create(
+        2,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
+        return false;
+    }
+
+    if scheduler.add_thread(&manager, 1).is_err() {
+        return false;
+    }
+
+    if scheduler.add_thread(&manager, 2).is_err() {
+        return false;
+    }
+
+    if scheduler.start(&mut manager) != Some(1) {
+        return false;
+    }
+
+    /*
+     * Remove the next thread from ThreadManager only.
+     * It intentionally remains in the scheduler queue.
+     */
+    if manager.remove(2).is_err() {
+        return false;
+    }
+
+    /*
+     * The next scheduler target is thread 2, but it no
+     * longer exists in ThreadManager.
+     *
+     * schedule_next() must fail BEFORE changing current
+     * or the state of thread 1.
+     */
+    if scheduler.schedule_next(&mut manager).is_some() {
+        return false;
+    }
+
+    scheduler.current() == Some(1)
+        && scheduler.count() == 2
+        && manager.get(1)
+            .map(|thread| {
+                thread.state()
+                    == ThreadState::Running
+            })
+            == Some(true)
+        && manager.get(2).is_none()
+}
+
+pub(super) fn scheduler_marks_replacement_running(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let mut manager = ThreadManager::new();
+    let mut scheduler = Scheduler::new();
+
+    if manager.create(
+        1,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
+        return false;
+    }
+
+    if manager.create(
+        2,
+        42,
+        allocator,
+        scheduler_test_entry,
+    ).is_err() {
+        return false;
+    }
+
+    if scheduler.add_thread(&manager, 1).is_err() {
+        return false;
+    }
+
+    if scheduler.add_thread(&manager, 2).is_err() {
+        return false;
+    }
+
+    if scheduler.start(&mut manager) != Some(1) {
+        return false;
+    }
+
+    if scheduler.remove(&mut manager, 1).is_err() {
+        return false;
+    }
+
+    scheduler.current() == Some(2)
+        && manager.get(2)
+            .map(|thread| {
+                thread.state()
+                    == ThreadState::Running
+            })
+            == Some(true)
 }

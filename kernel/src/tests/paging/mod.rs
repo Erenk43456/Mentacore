@@ -54,4 +54,23 @@ pub fn run(
         b"paging::address_space_unmapping",
         || address_space::test_address_space_unmapping(allocator),
     );
+
+    runner.run(
+        b"paging::nx_page_flags",
+        mapping::nx_page_flags,
+    );
+
+    runner.run(
+        b"paging::physical_to_virtual_mapping",
+        mapping::physical_to_virtual_mapping,
+    );
+}
+
+pub fn run_address_space_drop(
+    runner: &mut TestRunner,
+) {
+    runner.run(
+        b"paging::address_space_drop",
+        address_space::test_address_space_drop,
+    );
 }

@@ -22,6 +22,8 @@ use core::panic::PanicInfo;
 
 use mentacore_boot_protocol::BootInfo;
 
+use crate::scheduler::SchedulerRuntime;
+
 #[unsafe(no_mangle)]
 pub extern "C" fn _start(
     boot_info: *const BootInfo,
@@ -165,6 +167,21 @@ pub extern "C" fn _start(
         &mut allocator,
     );
 
+    // Heap
+    unsafe {
+        boot::heap::initialize();
+    }
+
+    // CPU
+    boot::cpu::initialize();
+
+    // LAPIC
+    let lapic = unsafe {
+        boot::lapic::initialize(
+            &mut allocator
+        )
+    };
+
     // ---------------------------------------------------------
     // Userspace ELF
     // ---------------------------------------------------------
@@ -272,27 +289,20 @@ pub extern "C" fn _start(
     debug::write(b"\r\n");
 
     // ---------------------------------------------------------
-    // Heap
-    // ---------------------------------------------------------
-
-    unsafe {
-        boot::heap::initialize();
-    }
-
-    // ---------------------------------------------------------
-    // CPU
-    // ---------------------------------------------------------
-
-    boot::cpu::initialize();
-
-    // ---------------------------------------------------------
     // Scheduler
     // ---------------------------------------------------------
 
-    scheduler::SchedulerRuntime::initialize(
+    if scheduler::SchedulerRuntime::initialize(
         &mut allocator,
-    )
-    .expect("failed to initialize scheduler");
+    ).is_err() {
+        debug::write(
+            b"ERROR: failed to initialize scheduler\r\n",
+        );
+
+        loop {
+            cpu::halt();
+        }
+    }
 
     debug::write(
         b"Scheduler initialized.\r\n"
@@ -331,15 +341,31 @@ pub extern "C" fn _start(
         }
     }
 
+    const USERSPACE_PROCESS_ID: u64 = 1;
+    const USERSPACE_THREAD_ID: u64 = 10;
+
     // ---------------------------------------------------------
-    // LAPIC
+    // Userspace process creation
     // ---------------------------------------------------------
 
-    let lapic = unsafe {
-        boot::lapic::initialize(
-            &mut allocator
-        )
-    };
+    if SchedulerRuntime::create_userspace_process(
+        USERSPACE_PROCESS_ID,
+        USERSPACE_THREAD_ID,
+        loaded_userspace,
+        &mut allocator,
+    ).is_err() {
+        debug::write(
+            b"ERROR: failed to create userspace process\r\n",
+        );
+
+        loop {
+            cpu::halt();
+        }
+    }
+
+    debug::write(
+        b"Userspace process created.\r\n"
+    );
 
     // ---------------------------------------------------------
     // Interrupt system
@@ -350,6 +376,12 @@ pub extern "C" fn _start(
             allocator
         );
     }
+
+    #[cfg(feature = "kernel-tests")]
+    test_runner.run_kernel_stack_drop();
+
+    #[cfg(feature = "kernel-tests")]
+    test_runner.run_address_space_drop();
 
     unsafe {
         boot::interrupt_controllers::initialize();
@@ -408,6 +440,46 @@ pub extern "C" fn _start(
         test_runner.run_scheduler_timer_preemption();
         test_runner.run_double_fault();
         test_runner.finish();
+    }
+
+    #[cfg(feature = "kernel-tests")]
+    {
+        debug::write(
+            b"Launching userspace...\r\n",
+        );
+
+        if SchedulerRuntime::launch_userspace(
+            USERSPACE_PROCESS_ID,
+            USERSPACE_THREAD_ID,
+        ).is_err() {
+            debug::write(
+                b"ERROR: failed to launch userspace\r\n",
+            );
+
+            loop {
+                cpu::halt();
+            }
+        }
+    }
+
+    #[cfg(not(feature = "kernel-tests"))]
+    {
+        debug::write(
+            b"Launching userspace...\r\n",
+        );
+
+        if SchedulerRuntime::launch_userspace(
+            USERSPACE_PROCESS_ID,
+            USERSPACE_THREAD_ID,
+        ).is_err() {
+            debug::write(
+                b"ERROR: failed to launch userspace\r\n",
+            );
+
+            loop {
+                cpu::halt();
+            }
+        }
     }
 
     // ---------------------------------------------------------

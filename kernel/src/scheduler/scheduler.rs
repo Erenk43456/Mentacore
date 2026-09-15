@@ -64,7 +64,7 @@ impl Scheduler {
         manager: &mut ThreadManager,
     ) -> Option<ThreadId> {
         let previous = self.current()?;
-        let next = self.schedule_next(manager)?;
+        let next = self.peek_next()?;
 
         if previous == next {
             return Some(next);
@@ -86,6 +86,9 @@ impl Scheduler {
                 None => return None,
             };
 
+        let next =
+            self.schedule_next(manager)?;
+
         unsafe {
             context_switch(
                 &mut *current_context,
@@ -102,6 +105,22 @@ impl Scheduler {
         current_rsp: u64,
     ) -> Option<u64> {
         let previous = self.current()?;
+
+        if self.queue.count() <= 1 {
+            if let Some(thread) = manager.get_mut(previous) {
+                thread.set_interrupt_rsp(current_rsp);
+            }
+
+            return Some(current_rsp);
+        }
+
+        let next = self.peek_next()?;
+
+        let next_rsp =
+            manager
+                .get(next)?
+                .interrupt_rsp();
+
         let next = self.schedule_next(manager)?;
 
         if previous == next {
@@ -116,11 +135,6 @@ impl Scheduler {
             thread.set_interrupt_rsp(current_rsp);
         }
 
-        let next_rsp =
-            manager
-                .get(next)?
-                .interrupt_rsp();
-
         Some(next_rsp)
     }
 
@@ -130,7 +144,33 @@ impl Scheduler {
     ) -> Option<ThreadId> {
         let previous = self.current();
 
-        let next = self.next()?;
+        let next_index = match self.current {
+            Some(current) => {
+                let count = self.queue.count();
+
+                if count == 0 {
+                    return None;
+                }
+
+                (current + 1) % count
+            }
+
+            None => 0,
+        };
+
+        let next = self.queue.get(next_index)?;
+
+        if !manager.contains(next) {
+            return None;
+        }
+
+        if let Some(previous) = previous {
+            if !manager.contains(previous) {
+                return None;
+            }
+        }
+
+        self.current = Some(next_index);
 
         if let Some(previous) = previous {
             if previous != next {
@@ -144,7 +184,9 @@ impl Scheduler {
             }
         }
 
-        if let Some(thread) = manager.get_mut(next) {
+        if let Some(thread) =
+            manager.get_mut(next)
+        {
             thread.set_state(
                 crate::thread::ThreadState::Running
             );
@@ -155,6 +197,7 @@ impl Scheduler {
 
     pub fn remove(
         &mut self,
+        manager: &mut ThreadManager,
         thread_id: ThreadId,
     ) -> Result<(), ()> {
         let removed_index =
@@ -166,9 +209,7 @@ impl Scheduler {
         match self.current {
             None => {}
 
-            Some(current)
-                if self.queue.is_empty() =>
-            {
+            Some(_) if self.queue.is_empty() => {
                 self.current = None;
             }
 
@@ -179,13 +220,26 @@ impl Scheduler {
             }
 
             Some(current)
-                if removed_index == current
-                    && current >= self.queue.count() =>
+                if removed_index == current =>
             {
-                self.current = Some(0);
+                self.current = Some(
+                    if current >= self.queue.count() {
+                        0
+                    } else {
+                        current
+                    },
+                );
             }
 
             _ => {}
+        }
+
+        if let Some(current) = self.current() {
+            if let Some(thread) = manager.get_mut(current) {
+                thread.set_state(
+                    crate::thread::ThreadState::Running,
+                );
+            }
         }
 
         Ok(())
@@ -194,6 +248,21 @@ impl Scheduler {
     pub fn current(&self) -> Option<ThreadId> {
         self.current
             .and_then(|index| self.queue.get(index))
+    }
+
+    pub fn peek_next(&self) -> Option<ThreadId> {
+        let count = self.queue.count();
+
+        if count == 0 {
+            return None;
+        }
+
+        let next_index = match self.current {
+            Some(current) => (current + 1) % count,
+            None => 0,
+        };
+
+        self.queue.get(next_index)
     }
 
     pub fn next(&mut self) -> Option<ThreadId> {
@@ -246,7 +315,8 @@ impl Scheduler {
             self.find_index(thread_id)
                 .ok_or(())?;
 
-        self.current = Some(index);
+        let current_index = index;
+        self.current = Some(current_index);
 
         for index in 0..self.queue.count() {
             let thread_id =
@@ -259,7 +329,7 @@ impl Scheduler {
                 manager.get_mut(thread_id)
             {
                 thread.set_state(
-                    if index == self.current.unwrap() {
+                    if index == current_index {
                         crate::thread::ThreadState::Running
                     } else {
                         crate::thread::ThreadState::Ready

@@ -8,19 +8,22 @@ use crate::memory::paging::{
 pub fn validate_user_address(
     address: u64,
 ) -> bool {
-    is_user_address(address)
+    address != 0
+        && is_user_address(address)
 }
 
 pub fn validate_user_buffer(
     address: u64,
     length: u64,
 ) -> bool {
-    if length == 0 {
-        return true;
+    if address == 0
+        || !is_user_address(address)
+    {
+        return false;
     }
 
-    if !is_user_address(address) {
-        return false;
+    if length == 0 {
+        return true;
     }
 
     let end = match address.checked_add(

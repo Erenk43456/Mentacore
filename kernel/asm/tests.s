@@ -3,7 +3,7 @@ bits 64
 section .text
 
 extern context_switch_test_target
-extern syscall_interrupt_dispatch
+extern ring3_test_syscall_interrupt_dispatch
 
 global context_switch_test_trampoline
 
@@ -100,7 +100,7 @@ user_privilege_interrupt_entry:
     sub rsp, 8
 
 .dispatch_aligned:
-    call syscall_interrupt_dispatch
+    call ring3_test_syscall_interrupt_dispatch
 
     test rsp, 8
     jz .restore_aligned

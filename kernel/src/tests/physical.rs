@@ -1,8 +1,9 @@
+use mentacore_boot_protocol::BootInfo;
+
 use crate::memory;
+use crate::memory::physical::PhysicalFrameAllocator;
 
 use super::framework::TestRunner;
-
-use crate::memory::physical::PhysicalFrameAllocator;
 
 pub fn run(
     runner: &mut TestRunner,
@@ -46,6 +47,16 @@ pub fn run(
     runner.run(
         b"physical::invalid_reservation",
         || test_invalid_reservation(allocator),
+    );
+
+    runner.run(
+        b"physical::allocation_below_limit",
+        || test_allocation_below_limit(allocator),
+    );
+
+    runner.run(
+        b"physical::conventional_region_below_4g",
+        test_conventional_region_below_4g,
     );
 }
 
@@ -316,4 +327,69 @@ fn test_invalid_reservation(
             memory::paging::PAGE_SIZE,
         )
         .is_err()
+}
+
+fn test_allocation_below_limit(
+    allocator: &mut PhysicalFrameAllocator,
+) -> bool {
+    let limit = 0x1_0000_0000u64;
+
+    let frame = match allocator.allocate_frame_below(limit) {
+        Some(frame) => frame,
+        None => return false,
+    };
+
+    if frame.start_address >= limit {
+        return false;
+    }
+
+    allocator.free_frame(frame).is_ok()
+}
+
+fn test_conventional_region_below_4g() -> bool {
+    let descriptors = [
+        memory::memory_map::MemoryDescriptor {
+            ty: 7,
+            pad: 0,
+            physical_start: 0x1_0000_0000,
+            virtual_start: 0,
+            number_of_pages: 0x1000,
+            attribute: 0,
+        },
+    ];
+
+    let boot_info = BootInfo {
+        version: 2,
+        framebuffer_addr: 0,
+        framebuffer_size: 0,
+        framebuffer_width: 0,
+        framebuffer_height: 0,
+        framebuffer_stride: 0,
+        framebuffer_format: 0,
+        memory_map_addr: descriptors.as_ptr() as u64,
+        memory_map_size:
+            core::mem::size_of_val(&descriptors) as u64,
+        memory_map_descriptor_size:
+            core::mem::size_of::<memory::memory_map::MemoryDescriptor>()
+                as u32,
+        memory_map_descriptor_version: 1,
+        kernel_image_addr: 0,
+        kernel_image_size: 0,
+        userspace_image_addr: 0,
+        userspace_image_size: 0,
+    };
+
+    let map = unsafe {
+        match memory::memory_map::MemoryMap::from_boot_info(
+            &boot_info,
+        ) {
+            Some(map) => map,
+            None => return false,
+        }
+    };
+
+    map.find_conventional_region(
+        memory::paging::PAGE_SIZE,
+    )
+    .is_none()
 }

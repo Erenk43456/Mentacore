@@ -11,6 +11,10 @@ static TIMER_TICKS: AtomicU64 =
 static LAPIC_TIMER_TICKS: AtomicU64 =
     AtomicU64::new(0);
 
+#[cfg(feature = "kernel-tests")]
+static LAPIC_TIMER_PREEMPTION_ENABLED: AtomicU64 =
+    AtomicU64::new(0);
+
 pub fn timer_ticks() -> u64 {
     TIMER_TICKS.load(Ordering::Relaxed)
 }
@@ -58,43 +62,49 @@ extern "C" fn lapic_timer_dispatch(
         );
     }
 
-    /*
-     * The LAPIC interrupt must be acknowledged before
-     * transferring control to another thread.
-     */
     unsafe {
         crate::hardware::lapic::write_global_eoi();
     }
 
-    let next_rsp =
+    #[cfg(feature = "kernel-tests")]
+    if LAPIC_TIMER_PREEMPTION_ENABLED.load(
+        Ordering::Relaxed,
+    ) == 0
+    {
+        return;
+    }
+
+    // A LAPIC timer interrupt can arrive while executing either
+    // kernel code (CPL0) or user code (CPL3). Only preempt a
+    // user-mode frame here; kernel-thread bootstrap frames are
+    // managed separately and must not be mixed with a Ring 3 frame.
+    let cs = unsafe {
+        *((dispatch_rsp + 16 * 8) as *const u64)
+    };
+
+    if (cs & 0x3) != 0x3 {
+        return;
+    }
+
+    let (next_rsp, next_pml4) =
         match crate::scheduler::SchedulerRuntime::preempt(
             dispatch_rsp,
         ) {
-            Some(rsp) => rsp,
+            Some(value) => value,
             None => return,
         };
 
-    /*
-     * No runnable thread change occurred.
-     * Continue through the normal interrupt return path.
-     */
     if next_rsp == dispatch_rsp {
         return;
     }
 
-    /*
-     * interrupt_context_switch() stores the current
-     * interrupt-entry RSP before loading the next
-     * thread's pre-built InterruptContext.
-     *
-     * It never returns; iretq resumes the selected thread.
-     */
     let mut current_rsp = dispatch_rsp;
 
     unsafe {
-        crate::thread::interrupt_context_switch(
+        crate::thread::interrupt_context_switch_to_address_space(
             &raw mut current_rsp,
-            next_rsp as *const crate::thread::InterruptContext,
+            next_rsp as *const u64,
+            next_pml4,
         );
     }
 }
@@ -102,4 +112,20 @@ extern "C" fn lapic_timer_dispatch(
 #[cfg(feature = "kernel-tests")]
 pub fn validate_interrupt_context_layout() -> bool {
     core::mem::size_of::<InterruptContext>() == 20 * 8
+}
+
+#[cfg(feature = "kernel-tests")]
+pub fn enable_lapic_timer_preemption() {
+    LAPIC_TIMER_PREEMPTION_ENABLED.store(
+        1,
+        Ordering::Relaxed,
+    );
+}
+
+#[cfg(feature = "kernel-tests")]
+pub fn disable_lapic_timer_preemption() {
+    LAPIC_TIMER_PREEMPTION_ENABLED.store(
+        0,
+        Ordering::Relaxed,
+    );
 }

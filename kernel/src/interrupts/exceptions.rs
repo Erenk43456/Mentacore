@@ -3,34 +3,34 @@ use core::arch::asm;
 #[cfg(feature = "kernel-tests")]
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::memory::physical::PhysicalFrameAllocator;
-use crate::sync::Spinlock;
-
 #[cfg(feature = "kernel-tests")]
 use super::idt;
 
 use super::serial::{serial_write, serial_write_hex};
 use super::TrapFrame;
 
-static FRAME_ALLOCATOR: Spinlock<Option<PhysicalFrameAllocator>> =
-    Spinlock::new(None);
-
 #[cfg(feature = "kernel-tests")]
 static NESTED_EXCEPTION_TEST_ARMED: AtomicU64 =
     AtomicU64::new(0);
-
-pub(crate) fn set_frame_allocator(
-    allocator: PhysicalFrameAllocator,
-) {
-    let mut guard = FRAME_ALLOCATOR.lock_irqsave();
-
-    *guard = Some(allocator);
-}
 
 #[unsafe(no_mangle)]
 extern "C" fn divide_error_dispatch(
     trap_frame: *const TrapFrame,
 ) -> ! {
+    let cr2: u64;
+
+    unsafe {
+        asm!(
+            "mov {}, cr2",
+            out(reg) cr2,
+            options(nostack, preserves_flags)
+        );
+    }
+
+    serial_write(b"CR2 at double fault: ");
+    serial_write_hex(cr2);
+    serial_write(b"\r\n");
+
     serial_write(b"\r\n");
     serial_write(b"================================\r\n");
     serial_write(b"       DIVIDE ERROR (#DE)\r\n");
@@ -102,6 +102,25 @@ extern "C" fn double_fault_dispatch(
     let ist1_ok =
         cpu_rsp >= ist1_start
             && cpu_rsp <= ist1_top;
+
+    #[cfg(feature = "kernel-tests")]
+    {
+        let flag_address =
+            core::ptr::addr_of!(NESTED_EXCEPTION_TEST_ARMED) as u64;
+
+        serial_write(b"DF TEST FLAG ADDRESS: ");
+        serial_write_hex(flag_address);
+        serial_write(b"\r\n");
+
+        let flag_value =
+            NESTED_EXCEPTION_TEST_ARMED.load(
+                Ordering::Relaxed,
+            );
+
+        serial_write(b"DF TEST FLAG VALUE: ");
+        serial_write_hex(flag_value);
+        serial_write(b"\r\n");
+    }
 
     #[cfg(feature = "kernel-tests")]
     let nested_exception_armed =
@@ -234,6 +253,22 @@ pub fn trigger_double_fault_test() -> ! {
         Ordering::Relaxed,
     );
 
+    let flag_address =
+        core::ptr::addr_of!(NESTED_EXCEPTION_TEST_ARMED) as u64;
+
+    serial_write(b"DF TEST FLAG ADDRESS: ");
+    serial_write_hex(flag_address);
+    serial_write(b"\r\n");
+
+    let flag_value =
+        NESTED_EXCEPTION_TEST_ARMED.load(
+            Ordering::Relaxed,
+        );
+
+    serial_write(b"DF TEST FLAG VALUE: ");
+    serial_write_hex(flag_value);
+    serial_write(b"\r\n");
+
     unsafe {
         core::arch::asm!(
             "cli",
@@ -258,6 +293,7 @@ pub fn trigger_double_fault_test() -> ! {
 extern "C" fn page_fault_dispatch(
     trap_frame: *const TrapFrame,
     error_code: u64,
+    current_rsp: u64,
 ) {
     let fault_address: u64;
 
@@ -303,6 +339,27 @@ extern "C" fn page_fault_dispatch(
     serial_write_hex(rflags);
     serial_write(b"\r\n");
 
+    if code_segment & 3 == 3 {
+        serial_write(
+            b"User-space page fault. Terminating thread.\r\n",
+        );
+
+        if crate::scheduler::SchedulerRuntime
+            ::terminate_current_user_thread(current_rsp)
+            .is_none()
+        {
+            serial_write(
+                b"Failed to terminate user thread.\r\n",
+            );
+
+            loop {
+                core::hint::spin_loop();
+            }
+        }
+
+        unreachable!();
+    }
+
     // Bit 0 = 1:
     // Page is present, but access was denied.
     // This is NOT a demand-paging fault.
@@ -335,7 +392,7 @@ extern "C" fn page_fault_dispatch(
     }
 
     let mut allocator_guard =
-        FRAME_ALLOCATOR.lock_irqsave();
+        crate::memory::physical::frame_allocator().lock();
 
     let allocator =
         match allocator_guard.as_mut() {
@@ -384,6 +441,7 @@ extern "C" fn page_fault_dispatch(
                 writable: true,
                 cache_disable: false,
                 user: false,
+                executable: false,
             },
         )
     } {

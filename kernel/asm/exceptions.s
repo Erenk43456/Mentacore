@@ -159,6 +159,8 @@ page_fault_entry:
 
     mov rsi, [rdi + CPU_ERROR_CODE_OFFSET]
 
+    mov rdx, rsp
+
     test rsp, 8
     jz .page_fault_dispatch_aligned
 

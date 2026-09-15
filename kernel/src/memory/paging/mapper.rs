@@ -4,6 +4,7 @@ use super::{
     PageTable,
     ADDRESS_MASK,
     HUGE_PAGE,
+    NX,
     PAGE_SIZE,
     PRESENT,
     PCD,
@@ -12,11 +13,37 @@ use super::{
 };
 use crate::memory::physical::PhysicalFrameAllocator;
 
-pub(super) fn flags_to_entry(flags: PageFlags) -> u64 {
+pub(super) fn flags_to_entry(
+    flags: PageFlags,
+) -> u64 {
     PRESENT
-        | if flags.writable { WRITABLE } else { 0 }
-        | if flags.cache_disable { PCD } else { 0 }
-        | if flags.user { USER } else { 0 }
+        | if flags.writable {
+            WRITABLE
+        } else {
+            0
+        }
+        | if flags.cache_disable {
+            PCD
+        } else {
+            0
+        }
+        | if flags.user {
+            USER
+        } else {
+            0
+        }
+        | if !flags.executable {
+            NX
+        } else {
+            0
+        }
+}
+
+#[cfg(feature = "kernel-tests")]
+pub(crate) fn test_flags_to_entry(
+    flags: PageFlags,
+) -> u64 {
+    flags_to_entry(flags)
 }
 
 fn validate_mapping(

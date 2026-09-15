@@ -2,9 +2,7 @@ use crate::debug;
 use crate::hardware;
 use crate::memory;
 use crate::memory::physical::PhysicalFrameAllocator;
-
-const LAPIC_VIRTUAL_BASE: u64 =
-    0xFFFF_A000_0000_0000;
+use crate::hardware::lapic::LAPIC_VIRTUAL_BASE;
 
 pub unsafe fn initialize(
     allocator: &mut PhysicalFrameAllocator,
@@ -43,6 +41,7 @@ pub unsafe fn initialize(
                 writable: true,
                 cache_disable: true,
                 user: false,
+                executable: false,
             },
         ) {
             Ok(()) => {}

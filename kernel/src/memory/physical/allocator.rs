@@ -95,6 +95,104 @@ impl PhysicalFrameAllocator {
         None
     }
 
+    pub fn allocate_frame_below(
+        &mut self,
+        limit: u64,
+    ) -> Option<Frame> {
+        if limit == 0 {
+            return None;
+        }
+
+        let frame_count = self.bitmap.frame_count();
+
+        if frame_count == 0 {
+            return None;
+        }
+
+        let max_frame = core::cmp::min(
+            frame_count,
+            (limit + PAGE_SIZE - 1) / PAGE_SIZE,
+        );
+
+        if max_frame == 0 {
+            return None;
+        }
+
+        let start_frame =
+            self.current_frame % max_frame;
+
+        for offset in 0..max_frame {
+            let frame_number =
+                start_frame.checked_add(offset)?;
+
+            if frame_number >= max_frame {
+                break;
+            }
+
+            let used = unsafe {
+                self.bitmap.is_used(frame_number)
+            };
+
+            if used {
+                continue;
+            }
+
+            let address =
+                frame_number.checked_mul(PAGE_SIZE)?;
+
+            let frame = Frame::new(address)?;
+
+            if frame.start_address >= limit {
+                continue;
+            }
+
+            unsafe {
+                self.bitmap.set(frame_number);
+            }
+
+            self.current_frame =
+                (frame_number + 1) % frame_count;
+
+            self.live_allocated_frames += 1;
+            self.total_allocations += 1;
+
+            return Some(frame);
+        }
+
+        for frame_number in 0..start_frame {
+            let used = unsafe {
+                self.bitmap.is_used(frame_number)
+            };
+
+            if used {
+                continue;
+            }
+
+            let address =
+                frame_number.checked_mul(PAGE_SIZE)?;
+
+            let frame = Frame::new(address)?;
+
+            if frame.start_address >= limit {
+                continue;
+            }
+
+            unsafe {
+                self.bitmap.set(frame_number);
+            }
+
+            self.current_frame =
+                (frame_number + 1) % frame_count;
+
+            self.live_allocated_frames += 1;
+            self.total_allocations += 1;
+
+            return Some(frame);
+        }
+
+        None
+    }
+
     pub fn allocate_contiguous_frames(
         &mut self,
         count: usize,

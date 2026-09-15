@@ -1,11 +1,14 @@
-use crate::memory::physical::PhysicalFrameAllocator;
+use crate::memory::physical::{
+    Frame,
+    PhysicalFrameAllocator,
+    PAGE_SIZE,
+};
 
 pub const KERNEL_STACK_SIZE: u64 = 16 * 1024;
 pub const KERNEL_STACK_ALIGNMENT: u64 = 16;
 pub const KERNEL_STACK_PAGES: usize =
-    (KERNEL_STACK_SIZE / crate::memory::physical::PAGE_SIZE) as usize;
+    (KERNEL_STACK_SIZE / PAGE_SIZE) as usize;
 
-#[derive(Clone, Copy)]
 pub struct KernelStack {
     base: u64,
     top: u64,
@@ -47,9 +50,45 @@ impl KernelStack {
             )?;
 
         let base = frame.start_address;
-        let top = base + KERNEL_STACK_SIZE;
 
-        Self::new(base, top)
+        let top = match base.checked_add(KERNEL_STACK_SIZE) {
+            Some(top) => top,
+            None => {
+                for index in 0..KERNEL_STACK_PAGES {
+                    let address =
+                        base + index as u64 * PAGE_SIZE;
+
+                    let frame =
+                        Frame::new(address)
+                            .expect("kernel stack frame must be aligned");
+
+                    let _ =
+                        allocator.free_frame(frame);
+                }
+
+                return None;
+            }
+        };
+
+        match Self::new(base, top) {
+            Some(stack) => Some(stack),
+
+            None => {
+                for index in 0..KERNEL_STACK_PAGES {
+                    let address =
+                        base + index as u64 * PAGE_SIZE;
+
+                    let frame =
+                        Frame::new(address)
+                            .expect("kernel stack frame must be aligned");
+
+                    let _ =
+                        allocator.free_frame(frame);
+                }
+
+                None
+            }
+        }
     }
 
     pub fn base(&self) -> u64 {
@@ -62,5 +101,32 @@ impl KernelStack {
 
     pub fn size(&self) -> u64 {
         self.top - self.base
+    }
+}
+
+impl Drop for KernelStack {
+    fn drop(&mut self) {
+        let mut guard =
+            crate::memory::physical::frame_allocator().lock();
+
+        let allocator =
+            match guard.as_mut() {
+                Some(allocator) => allocator,
+                None => return,
+            };
+
+        for index in 0..KERNEL_STACK_PAGES {
+            let address =
+                self.base + index as u64 * PAGE_SIZE;
+
+            let frame =
+                match Frame::new(address) {
+                    Some(frame) => frame,
+                    None => continue,
+                };
+
+            let _ =
+                allocator.free_frame(frame);
+        }
     }
 }

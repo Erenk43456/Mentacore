@@ -9,9 +9,17 @@ pub(super) fn test_address_space_abstraction(
             memory::paging::current_pml4()
         };
 
+    let pml4_address =
+        unsafe {
+            memory::paging::current_pml4_address()
+        };
+
     let address_space =
         unsafe {
-            memory::paging::AddressSpace::from_pml4(pml4)
+            memory::paging::AddressSpace::from_pml4(
+                pml4,
+                pml4_address,
+            )
         };
 
     if address_space.pml4() != pml4 {
@@ -52,10 +60,16 @@ pub(super) fn test_address_space_mapping(
             memory::paging::current_pml4()
         };
 
+    let pml4_address =
+        unsafe {
+            memory::paging::current_pml4_address()
+        };
+
     let address_space =
         unsafe {
             memory::paging::AddressSpace::from_pml4(
                 pml4,
+                pml4_address,
             )
         };
 
@@ -75,6 +89,7 @@ pub(super) fn test_address_space_mapping(
                     writable: true,
                     cache_disable: false,
                     user: true,
+                    executable: false,
                 },
             )
             .is_err()
@@ -118,10 +133,16 @@ pub(super) fn test_address_space_unmapping(
             memory::paging::current_pml4()
         };
 
+    let pml4_address =
+        unsafe {
+            memory::paging::current_pml4_address()
+        };
+
     let address_space =
         unsafe {
             memory::paging::AddressSpace::from_pml4(
                 pml4,
+                pml4_address,
             )
         };
 
@@ -144,6 +165,7 @@ pub(super) fn test_address_space_unmapping(
                     writable: true,
                     cache_disable: false,
                     user: true,
+                    executable: false,
                 },
             )
             .is_err()
@@ -191,4 +213,93 @@ pub(super) fn test_address_space_unmapping(
         Some(entries) => entries[3] & 1 == 0,
         None => true,
     }
+}
+
+pub(super) fn test_address_space_drop() -> bool {
+    let before = {
+        let guard =
+            crate::memory::physical::frame_allocator().lock();
+
+        match guard.as_ref() {
+            Some(allocator) =>
+                allocator.allocated_count(),
+            None => return false,
+        }
+    };
+
+    let address_space = {
+        let mut guard =
+            crate::memory::physical::frame_allocator().lock();
+
+        let allocator =
+            match guard.as_mut() {
+                Some(allocator) => allocator,
+                None => return false,
+            };
+
+        unsafe {
+            match memory::paging::AddressSpace::new_user(
+                allocator,
+            ) {
+                Ok(address_space) => address_space,
+                Err(()) => return false,
+            }
+        }
+    };
+
+    let mapped = {
+        let mut guard =
+            crate::memory::physical::frame_allocator().lock();
+
+        let allocator =
+            match guard.as_mut() {
+                Some(allocator) => allocator,
+                None => return false,
+            };
+
+        let frame =
+            match allocator.allocate_frame() {
+                Some(frame) => frame,
+                None => return false,
+            };
+
+        let virtual_address =
+            0x0000_7000_0000_0000;
+
+        let result = unsafe {
+            address_space.map_owned(
+                allocator,
+                virtual_address,
+                frame.start_address,
+                memory::paging::PageFlags {
+                    writable: true,
+                    cache_disable: false,
+                    user: true,
+                    executable: false,
+                },
+            )
+        };
+
+        result.is_ok()
+    };
+
+    if !mapped {
+        drop(address_space);
+        return false;
+    }
+
+    drop(address_space);
+
+    let after = {
+        let guard =
+            crate::memory::physical::frame_allocator().lock();
+
+        match guard.as_ref() {
+            Some(allocator) =>
+                allocator.allocated_count(),
+            None => return false,
+        }
+    };
+
+    after == before
 }

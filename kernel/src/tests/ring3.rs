@@ -88,6 +88,7 @@ pub fn prepare(
                 writable: false,
                 cache_disable: false,
                 user: true,
+                executable: true,
             },
         )
     };
@@ -110,6 +111,7 @@ pub fn prepare(
                 writable: true,
                 cache_disable: false,
                 user: true,
+                executable: false,
             },
         )
     };
@@ -197,6 +199,10 @@ fn test_user_buffer_validation() -> bool {
             memory::paging::KERNEL_SPACE_START,
             memory::paging::PAGE_SIZE,
         )
+        && !validate_user_buffer(
+            0,
+            0,
+        )
 }
 
 pub fn run() -> bool {
@@ -224,7 +230,7 @@ pub fn run() -> bool {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn syscall_interrupt_dispatch(
+extern "C" fn ring3_test_syscall_interrupt_dispatch(
     saved_registers: *mut u64,
     cpu_frame: *mut u64,
     current_rsp: u64,

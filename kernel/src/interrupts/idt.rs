@@ -28,6 +28,8 @@ impl IdtEntry {
         selector: u16,
         ist: u8,
     ) {
+        assert!(ist <= 7);
+        
         let address = handler as u64;
 
         self.offset_low = address as u16;
@@ -81,6 +83,8 @@ unsafe extern "C" {
     fn page_fault_entry() -> !;
     fn timer_irq_entry() -> !;
     fn lapic_timer_entry() -> !;
+    fn syscall_interrupt_entry() -> !;
+
     #[cfg(feature = "kernel-tests")]
     fn user_privilege_interrupt_entry() -> !;
 }
@@ -139,6 +143,11 @@ pub(crate) unsafe fn init() {
             timer_irq_entry,
             code_segment,
             0,
+        );
+
+        IDT[0x80].set_user_handler(
+            syscall_interrupt_entry,
+            code_segment,
         );
 
         IDT[super::timer::LAPIC_TIMER_VECTOR as usize]

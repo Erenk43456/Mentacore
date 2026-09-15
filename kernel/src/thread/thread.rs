@@ -48,7 +48,10 @@ impl Thread {
          * return and therefore does not need a return address.
          */
         let stack_pointer =
-            kernel_stack.top() - 8;
+            kernel_stack
+                .top()
+                .checked_sub(8)
+                .ok_or(())?;
 
         let mut thread = Self {
             tid,
@@ -110,18 +113,16 @@ impl Thread {
         &mut self,
     ) -> Result<(), ()> {
         let frame_size =
-            core::mem::size_of::<super::InterruptContext>()
+            core::mem::size_of::<super::KernelInterruptContext>()
                 as u64;
 
         /*
-        * Keep the post-iret stack aligned exactly like a
-        * normal kernel thread entry.
+        * Kernel interrupt frames return to CPL0, so they contain:
         *
-        * iretq consumes 160 bytes, leaving:
+        *     15 saved registers + RIP + CS + RFLAGS
         *
-        *     RSP = stack_top - 8
-        *
-        * which matches the KernelContext startup ABI.
+        * The frame is followed by the same stack alignment expected
+        * by the kernel thread startup context.
         */
         let frame_address =
             self.kernel_stack
@@ -132,24 +133,21 @@ impl Thread {
                 .ok_or(())?;
 
         let frame =
-            super::InterruptContext::new(
+            super::KernelInterruptContext::new(
                 self.context.rip(),
                 0x08,
                 self.context.rflags(),
-                self.context.rsp(),
-                0x10,
             );
 
         unsafe {
             core::ptr::write(
                 frame_address
-                    as *mut super::InterruptContext,
+                    as *mut super::KernelInterruptContext,
                 frame,
             );
         }
 
-        self.interrupt_rsp =
-            frame_address;
+        self.interrupt_rsp = frame_address;
 
         Ok(())
     }
@@ -197,7 +195,10 @@ impl Thread {
             process_id,
             state: ThreadState::Ready,
             context: KernelContext::new(
-                kernel_stack.top() - 8,
+                kernel_stack
+                    .top()
+                    .checked_sub(8)
+                    .ok_or(())?,
                 entry as usize as u64,
             ),
             kernel_stack,

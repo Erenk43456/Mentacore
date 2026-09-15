@@ -83,6 +83,19 @@ impl KernelTestRunner {
         );
     }
 
+    pub fn run_kernel_stack_drop(&mut self) {
+        self.runner.run(
+            b"thread::kernel_stack_drop",
+            thread::test_kernel_stack_drop,
+        );
+    }
+
+    pub fn run_address_space_drop(&mut self) {
+        paging::run_address_space_drop(
+            &mut self.runner,
+        );
+    }
+
     pub fn run_scheduler(
         &mut self,
         allocator: &mut PhysicalFrameAllocator,

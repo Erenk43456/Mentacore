@@ -155,6 +155,165 @@ fn fixture() -> [u8; 0x1006] {
     data
 }
 
+fn fixture_overlapping_segments() -> [u8; 0x1806] {
+    let mut data = [0u8; 0x1806];
+
+    data[0..4]
+        .copy_from_slice(
+            b"\x7fELF"
+        );
+
+    data[4] = 2;
+    data[5] = 1;
+
+    write_u16(
+        &mut data,
+        16,
+        2,
+    );
+
+    write_u16(
+        &mut data,
+        18,
+        0x3e,
+    );
+
+    write_u32(
+        &mut data,
+        20,
+        1,
+    );
+
+    write_u64(
+        &mut data,
+        24,
+        ENTRY,
+    );
+
+    write_u64(
+        &mut data,
+        32,
+        0x40,
+    );
+
+    write_u16(
+        &mut data,
+        54,
+        56,
+    );
+
+    write_u16(
+        &mut data,
+        56,
+        2,
+    );
+
+    let ph1 = 0x40;
+    let ph2 = ph1 + 56;
+
+    write_u32(
+        &mut data,
+        ph1,
+        1,
+    );
+
+    write_u32(
+        &mut data,
+        ph1 + 4,
+        0x5,
+    );
+
+    write_u64(
+        &mut data,
+        ph1 + 8,
+        0x1000,
+    );
+
+    write_u64(
+        &mut data,
+        ph1 + 16,
+        ENTRY,
+    );
+
+    write_u64(
+        &mut data,
+        ph1 + 24,
+        0,
+    );
+
+    write_u64(
+        &mut data,
+        ph1 + 32,
+        6,
+    );
+
+    write_u64(
+        &mut data,
+        ph1 + 40,
+        0x800,
+    );
+
+    write_u64(
+        &mut data,
+        ph1 + 48,
+        0x800,
+    );
+
+    write_u32(
+        &mut data,
+        ph2,
+        1,
+    );
+
+    write_u32(
+        &mut data,
+        ph2 + 4,
+        0x5,
+    );
+
+    write_u64(
+        &mut data,
+        ph2 + 8,
+        0x1800,
+    );
+
+    write_u64(
+        &mut data,
+        ph2 + 16,
+        ENTRY + 0x800,
+    );
+
+    write_u64(
+        &mut data,
+        ph2 + 24,
+        0,
+    );
+
+    write_u64(
+        &mut data,
+        ph2 + 32,
+        6,
+    );
+
+    write_u64(
+        &mut data,
+        ph2 + 40,
+        0x800,
+    );
+
+    data[0x1000..0x1006]
+        .copy_from_slice(
+            b"FLUST!"
+        );
+
+    data[0x1800..0x1806]
+        .copy_from_slice(
+            b"MENTA!"
+        );
+
+    data
+}
+
 pub fn run(
     runner: &mut TestRunner,
     allocator: &mut PhysicalFrameAllocator,
@@ -170,8 +329,8 @@ pub fn run(
     );
 
     runner.run(
-        b"elf::loader_user_stack",
-        || test_loader_user_stack(allocator),
+        b"elf::loader_overlapping_segments",
+        || test_loader_overlapping_segments(allocator),
     );
 }
 
@@ -277,12 +436,13 @@ fn test_loader_segment(
     true
 }
 
-fn test_loader_user_stack(
+fn test_loader_overlapping_segments(
     allocator: &mut PhysicalFrameAllocator,
 ) -> bool {
-    let data = fixture();
+    let data =
+        fixture_overlapping_segments();
 
-    let mut loaded =
+    let loaded =
         match unsafe {
             load_elf(
                 &data,
@@ -293,73 +453,63 @@ fn test_loader_user_stack(
             Err(_) => return false,
         };
 
-    let expected_top =
-        crate::memory::paging::USER_SPACE_END
-            & !(PAGE_SIZE - 1);
-
-    let expected_base =
-        expected_top
-            - 4 * PAGE_SIZE;
-
-    let stack_top =
-        match unsafe {
-            loaded.map_user_stack(allocator)
-        } {
-            Ok(value) => value,
-            Err(_) => return false,
-        };
-
-    if stack_top != expected_top {
+    if loaded.segment_count() != 2 {
         return false;
     }
 
-    if loaded.user_stack_top()
-        != expected_top
+    let first =
+        match loaded.segment(0) {
+            Some(segment) => segment,
+            None => return false,
+        };
+
+    let second =
+        match loaded.segment(1) {
+            Some(segment) => segment,
+            None => return false,
+        };
+
+    if first.physical_address
+        != second.physical_address
     {
         return false;
     }
 
-    for page_index in 0..4u64 {
-        let virtual_address =
-            expected_base
-                + page_index * PAGE_SIZE;
+    if first.page_count != 1
+        || second.page_count != 1
+    {
+        return false;
+    }
 
-        let physical_address =
-            match unsafe {
-                loaded
-                    .address_space()
-                    .unmap(virtual_address)
-            } {
-                Ok(address) => address,
-                Err(_) => return false,
+    let ptr =
+        first.physical_address
+            as *const u8;
+
+    for (index, expected)
+        in b"FLUST!".iter().enumerate()
+    {
+        let actual =
+            unsafe {
+                ptr.add(index).read()
             };
 
-        let frame =
-            Frame {
-                start_address:
-                    physical_address,
-            };
-
-        if !allocator
-            .is_frame_used(frame)
-            .unwrap_or(false)
-        {
+        if actual != *expected {
             return false;
         }
+    }
 
-        let ptr =
-            physical_address
-                as *const u8;
+    for (index, expected)
+        in b"MENTA!".iter().enumerate()
+    {
+        let actual =
+            unsafe {
+                ptr.add(
+                    0x800 + index
+                ).read()
+            };
 
-        for index in 0..PAGE_SIZE as usize {
-            let value =
-                unsafe {
-                    ptr.add(index).read()
-                };
-
-            if value != 0 {
-                return false;
-            }
+        if actual != *expected {
+            return false;
         }
     }
 

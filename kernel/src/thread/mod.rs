@@ -7,10 +7,14 @@ mod thread;
 pub use context::{
     context_switch,
     interrupt_context_switch,
+    interrupt_context_switch_to_address_space,
     KernelContext,
 };
 
-pub use interrupt_context::InterruptContext;
+pub use interrupt_context::{
+    InterruptContext,
+    KernelInterruptContext,
+};
 
 pub use manager::{
     ThreadManager,

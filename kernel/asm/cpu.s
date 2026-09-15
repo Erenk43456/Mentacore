@@ -98,7 +98,7 @@ global interrupt_context_switch
 ;     const InterruptContext* next
 ; )
 ;
-; InterruptContext:
+; Interrupt return frame:
 ;   +0   r15
 ;   +8   r14
 ;   +16  r13
@@ -117,8 +117,8 @@ global interrupt_context_switch
 ;   +120 rip
 ;   +128 cs
 ;   +136 rflags
-;   +144 rsp
-;   +152 ss
+;   +144 rsp (CPL3 return only)
+;   +152 ss  (CPL3 return only)
 
 interrupt_context_switch:
     ; RDI = current_rsp
@@ -126,6 +126,52 @@ interrupt_context_switch:
 
     mov [rdi], rsp
 
+    mov rsp, rsi
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbp
+    pop rbx
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rax
+
+    iretq
+
+global interrupt_context_switch_to_address_space
+
+; void interrupt_context_switch_to_address_space(
+;     u64* current_rsp,
+;     const InterruptContext* next,
+;     u64 next_pml4
+; )
+;
+; RDI = current_rsp
+; RSI = next InterruptContext
+; RDX = next PML4 physical address
+;
+; CR3 must be changed while the old kernel stack is
+; still active. Only after CR3 is loaded do we switch
+; to the next thread's kernel stack.
+
+interrupt_context_switch_to_address_space:
+    ; Save the current kernel stack pointer while the
+    ; current address space is still active.
+    mov [rdi], rsp
+
+    ; Switch to the target address space before touching
+    ; the target kernel stack.
+    mov cr3, rdx
+
+    ; Target InterruptContext is mapped in the new address space.
     mov rsp, rsi
 
     pop r15

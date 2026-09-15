@@ -5,6 +5,7 @@ mod mapper;
 mod registers;
 mod table;
 
+use core::sync::atomic::{AtomicU64, Ordering};
 use super::heap::{HEAP_SIZE, HEAP_START};
 use super::physical::PhysicalFrameAllocator;
 use mentacore_boot_protocol::BootInfo;
@@ -18,7 +19,9 @@ pub(super) const PRESENT: u64 = 1 << 0;
 pub(super) const WRITABLE: u64 = 1 << 1;
 pub(super) const USER: u64 = 1 << 2;
 pub(super) const PCD: u64 = 1 << 4;
+pub(super) const NX: u64 = 1 << 63;
 pub(super) const HUGE_PAGE: u64 = 1 << 7;
+pub(super) const OWNED: u64 = 1 << 9;
 
 pub(super) const ADDRESS_MASK: u64 =
     0x000f_ffff_ffff_f000;
@@ -27,6 +30,9 @@ pub(super) const INDEX_MASK: u64 = 0x1ff;
 
 pub const IDENTITY_MAP_SIZE: u64 =
     0x1_0000_0000;
+
+pub const PHYS_MAP_BASE: u64 =
+    0xFFFF_9000_0000_0000;
 
 pub const USER_SPACE_START: u64 =
     0x0000_0000_0000_0000;
@@ -40,11 +46,15 @@ pub const KERNEL_SPACE_START: u64 =
 pub const KERNEL_SPACE_END: u64 =
     0xFFFF_FFFF_FFFF_FFFF;
 
+static KERNEL_PML4_ADDRESS: AtomicU64 =
+    AtomicU64::new(0);
+
 #[derive(Clone, Copy)]
 pub struct PageFlags {
     pub writable: bool,
     pub cache_disable: bool,
     pub user: bool,
+    pub executable: bool,
 }
 
 pub(super) const KERNEL_FLAGS: PageFlags =
@@ -52,6 +62,7 @@ pub(super) const KERNEL_FLAGS: PageFlags =
         writable: true,
         cache_disable: false,
         user: false,
+        executable: false,
     };
 
 #[repr(align(4096))]
@@ -88,6 +99,14 @@ pub fn is_user_address(address: u64) -> bool {
 pub fn is_kernel_address(address: u64) -> bool {
     address >= KERNEL_SPACE_START
         && address <= KERNEL_SPACE_END
+}
+
+pub fn physical_to_virtual(
+    physical_address: u64,
+) -> Option<u64> {
+    PHYS_MAP_BASE.checked_add(
+        physical_address,
+    )
 }
 
 pub unsafe fn is_user_page_mapped(
@@ -155,12 +174,87 @@ pub unsafe fn is_user_page_mapped(
         && pte & USER != 0
 }
 
+pub unsafe fn user_page_physical_address(
+    pml4: *mut PageTable,
+    virtual_address: u64,
+) -> Option<u64> {
+    if !is_user_address(virtual_address)
+        || virtual_address & (PAGE_SIZE - 1) != 0
+    {
+        return None;
+    }
+
+    let indices =
+        table::page_table_indices(virtual_address);
+
+    let pml4_entry =
+        unsafe { (*pml4).entries[indices.pml4] };
+
+    if pml4_entry & PRESENT == 0
+        || pml4_entry & USER == 0
+    {
+        return None;
+    }
+
+    let pdpt =
+        (pml4_entry & ADDRESS_MASK)
+            as *mut PageTable;
+
+    let pdpt_entry =
+        unsafe { (*pdpt).entries[indices.pdpt] };
+
+    if pdpt_entry & PRESENT == 0
+        || pdpt_entry & USER == 0
+        || pdpt_entry & HUGE_PAGE != 0
+    {
+        return None;
+    }
+
+    let pd =
+        (pdpt_entry & ADDRESS_MASK)
+            as *mut PageTable;
+
+    let pd_entry =
+        unsafe { (*pd).entries[indices.pd] };
+
+    if pd_entry & PRESENT == 0
+        || pd_entry & USER == 0
+        || pd_entry & HUGE_PAGE != 0
+    {
+        return None;
+    }
+
+    let pt =
+        (pd_entry & ADDRESS_MASK)
+            as *mut PageTable;
+
+    let pte =
+        unsafe { (*pt).entries[indices.pt] };
+
+    if pte & PRESENT == 0
+        || pte & USER == 0
+    {
+        return None;
+    }
+
+    Some(pte & ADDRESS_MASK)
+}
+
+pub fn kernel_pml4_address() -> u64 {
+    KERNEL_PML4_ADDRESS.load(Ordering::Relaxed)
+}
+
 pub unsafe fn init(
     allocator: &mut PhysicalFrameAllocator,
     boot_info: &BootInfo,
 ) -> Result<(), ()> {
     let (pml4, pml4_address, directories) =
         unsafe { table::create_page_tables(allocator)? };
+
+    KERNEL_PML4_ADDRESS.store(
+        pml4_address,
+        Ordering::Relaxed,
+    );
 
     let pd2 = directories[2];
 
@@ -170,6 +264,21 @@ pub unsafe fn init(
         boot_info,
     )?;
 
+    let memory_map =
+        unsafe {
+            crate::memory::memory_map::MemoryMap
+                ::from_boot_info(boot_info)
+        }
+        .ok_or(())?;
+
+    unsafe {
+        table::map_physical_memory(
+            pml4,
+            allocator,
+            &memory_map,
+        )?;
+    }
+
     unsafe {
         validate_initial_mapping_rejections(
             pml4,
@@ -178,7 +287,7 @@ pub unsafe fn init(
     }
 
     let test_virtual =
-        0xFFFF_9000_0000_0000;
+        0xFFFF_8000_1000_0000;
 
     let test_frame =
         allocator.allocate_frame().ok_or(())?;
@@ -405,4 +514,15 @@ pub use mapper::{
     unmap_page,
 };
 
-pub use registers::current_pml4;
+#[cfg(feature = "kernel-tests")]
+pub(crate) fn test_flags_to_entry(
+    flags: PageFlags,
+) -> u64 {
+    mapper::test_flags_to_entry(flags)
+}
+
+pub use registers::{
+    current_pml4,
+    current_pml4_address,
+    load_cr3,
+};

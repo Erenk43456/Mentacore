@@ -11,6 +11,8 @@ use crate::tests::scheduler::integration::{
     scheduler_runtime_starts_idle_thread,
     scheduler_selects_managed_threads,
     scheduler_switches_to_selected_thread,
+    scheduler_preserves_state_on_missing_thread,
+    scheduler_marks_replacement_running,
 };
 use crate::memory::physical::PhysicalFrameAllocator;
 
@@ -57,7 +59,7 @@ pub(super) fn run(
 
     runner.run(
         b"scheduler::round_robin_remove_current",
-        round_robin::round_robin_remove_current,
+        || round_robin::round_robin_remove_current(allocator),
     );
 
     runner.run(
@@ -95,6 +97,16 @@ pub(super) fn run(
     runner.run(
         b"scheduler::runtime",
         || scheduler_runtime_starts_idle_thread(allocator),
+    );
+
+    runner.run(
+        b"scheduler::missing_thread_state",
+        || scheduler_preserves_state_on_missing_thread(allocator),
+    );
+
+    runner.run(
+        b"scheduler::remove_marks_replacement_running",
+        || scheduler_marks_replacement_running(allocator),
     );
 
     runner.run(

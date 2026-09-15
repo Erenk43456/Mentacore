@@ -25,6 +25,10 @@ pub struct BootInfo {
     pub memory_map_descriptor_size: u32,
     pub memory_map_descriptor_version: u32,
 
+    // Kernel ELF image loaded by the bootloader.
+    pub kernel_image_addr: u64,
+    pub kernel_image_size: u64,
+
     // Userspace ELF image loaded by the bootloader.
     pub userspace_image_addr: u64,
     pub userspace_image_size: u64,

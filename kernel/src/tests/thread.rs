@@ -7,7 +7,6 @@ use crate::thread::{
     Thread,
     ThreadManager,
     ThreadState,
-    InterruptContext,
 };
 
 extern "C" fn test_thread_entry() -> ! {
@@ -145,14 +144,27 @@ fn test_interrupt_context(
     }
 
     let frame = unsafe {
-        &*(interrupt_rsp as *const InterruptContext)
+        &*(interrupt_rsp as *const crate::thread::KernelInterruptContext)
     };
 
     frame.rip == test_thread_entry as usize as u64
         && frame.cs == 0x08
         && frame.rflags == 0x202
-        && frame.rsp == thread.kernel_stack().top() - 8
-        && frame.ss == 0x10
+}
+
+pub(super) fn test_user_interrupt_context() -> bool {
+    let context =
+        crate::thread::InterruptContext::new_user(
+            0x0000_1000_0000_0000,
+            0x202,
+            0x0000_7FFF_FFFF_F000,
+        );
+
+    context.rip == 0x0000_1000_0000_0000
+        && context.cs == 0x2B
+        && context.rflags == 0x202
+        && context.rsp == 0x0000_7FFF_FFFF_F000
+        && context.ss == 0x33
 }
 
 pub(super) fn test_kernel_context_layout() -> bool {
@@ -403,6 +415,67 @@ pub(super) fn test_kernel_stack_validation() -> bool {
     true
 }
 
+pub(super) fn test_kernel_stack_drop() -> bool {
+    let before = {
+        let guard =
+            crate::memory::physical::frame_allocator().lock();
+
+        match guard.as_ref() {
+            Some(allocator) =>
+                allocator.allocated_count(),
+            None => return false,
+        }
+    };
+
+    let stack = {
+        let mut guard =
+            crate::memory::physical::frame_allocator().lock();
+
+        let allocator =
+            match guard.as_mut() {
+                Some(allocator) => allocator,
+                None => return false,
+            };
+
+        match KernelStack::allocate(allocator) {
+            Some(stack) => stack,
+            None => return false,
+        }
+    };
+
+    let allocated = {
+        let guard =
+            crate::memory::physical::frame_allocator().lock();
+
+        match guard.as_ref() {
+            Some(allocator) =>
+                allocator.allocated_count(),
+            None => return false,
+        }
+    };
+
+    if allocated
+        != before + KERNEL_STACK_PAGES as u64
+    {
+        return false;
+    }
+
+    drop(stack);
+
+    let after = {
+        let guard =
+            crate::memory::physical::frame_allocator().lock();
+
+        match guard.as_ref() {
+            Some(allocator) =>
+                allocator.allocated_count(),
+            None => return false,
+        }
+    };
+
+    after == before
+}
+
 pub(super) fn run(
     runner: &mut super::framework::TestRunner,
     allocator: &mut PhysicalFrameAllocator,
@@ -425,6 +498,11 @@ pub(super) fn run(
     runner.run(
         b"thread::interrupt_context",
         || test_interrupt_context(allocator),
+    );
+
+    runner.run(
+        b"thread::user_interrupt_context",
+        test_user_interrupt_context,
     );
 
     runner.run(

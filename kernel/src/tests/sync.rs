@@ -13,6 +13,11 @@ pub fn run(runner: &mut TestRunner) {
         b"sync::spinlock_irqsave",
         test_spinlock_irqsave,
     );
+
+    runner.run(
+        b"sync::spinlock_irq_context",
+        test_spinlock_irq_context,
+    );
 }
 
 fn test_spinlock() -> bool {
@@ -197,4 +202,40 @@ fn test_spinlock_irqsave() -> bool {
     }
 
     !lock.is_locked() && cpu::interrupts_enabled()
+}
+
+fn test_spinlock_irq_context() -> bool {
+    let lock = Spinlock::new(0u64);
+
+    let disabled_state =
+        cpu::InterruptState::save_and_disable();
+
+    if cpu::interrupts_enabled() {
+        disabled_state.restore();
+        return false;
+    }
+
+    {
+        let mut guard = lock.lock();
+
+        if cpu::interrupts_enabled() {
+            disabled_state.restore();
+            return false;
+        }
+
+        if !lock.is_locked() {
+            disabled_state.restore();
+            return false;
+        }
+
+        *guard = 0xBEEF_CAFE;
+    }
+
+    let result =
+        !lock.is_locked()
+        && !cpu::interrupts_enabled();
+
+    disabled_state.restore();
+
+    result && cpu::interrupts_enabled()
 }

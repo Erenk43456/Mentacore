@@ -1,5 +1,3 @@
-use super::InterruptContext;
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KernelContext {
@@ -55,6 +53,12 @@ unsafe extern "C" {
 
     pub fn interrupt_context_switch(
         current_rsp: *mut u64,
-        next: *const InterruptContext,
+        next: *const u64,
+    ) -> !;
+
+    pub fn interrupt_context_switch_to_address_space(
+        current_rsp: *mut u64,
+        next: *const u64,
+        next_pml4: u64,
     ) -> !;
 }
