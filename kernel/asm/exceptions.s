@@ -1,5 +1,3 @@
-bits 64
-
 %include "common.inc"
 
 section .text

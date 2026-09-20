@@ -40,6 +40,7 @@ fn main() {
         ("exceptions.s", "exceptions.o"),
         ("timer.s", "timer.o"),
         ("cpu.s", "cpu.o"),
+        ("context_switch.s", "context_switch.o"),
         ("syscall.s", "syscall.o"),
     ];
     
