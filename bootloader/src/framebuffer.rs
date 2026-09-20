@@ -1,4 +1,11 @@
-use mentacore_boot_protocol::{BootInfo, BOOT_PROTOCOL_VERSION};
+use mentacore_boot_protocol::{
+    BootInfo,
+    BOOT_PROTOCOL_VERSION,
+    FRAMEBUFFER_FORMAT_BGR,
+    FRAMEBUFFER_FORMAT_BITMASK,
+    FRAMEBUFFER_FORMAT_BLT_ONLY,
+    FRAMEBUFFER_FORMAT_RGB,
+};
 
 use uefi::boot;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
@@ -49,10 +56,10 @@ pub fn initialize() -> Result<BootInfo, ()> {
     let framebuffer_size = framebuffer.size() as u64;
 
     let framebuffer_format = match info.pixel_format() {
-        PixelFormat::Rgb => 0,
-        PixelFormat::Bgr => 1,
-        PixelFormat::Bitmask => 2,
-        PixelFormat::BltOnly => 3,
+        PixelFormat::Rgb => FRAMEBUFFER_FORMAT_RGB,
+        PixelFormat::Bgr => FRAMEBUFFER_FORMAT_BGR,
+        PixelFormat::Bitmask => FRAMEBUFFER_FORMAT_BITMASK,
+        PixelFormat::BltOnly => FRAMEBUFFER_FORMAT_BLT_ONLY,
     };
 
     Ok(BootInfo {

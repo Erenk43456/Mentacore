@@ -2,6 +2,11 @@
 
 pub const BOOT_PROTOCOL_VERSION: u32 = 2;
 
+pub const FRAMEBUFFER_FORMAT_RGB: u32 = 0;
+pub const FRAMEBUFFER_FORMAT_BGR: u32 = 1;
+pub const FRAMEBUFFER_FORMAT_BITMASK: u32 = 2;
+pub const FRAMEBUFFER_FORMAT_BLT_ONLY: u32 = 3;
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BootInfo {
@@ -13,11 +18,6 @@ pub struct BootInfo {
     pub framebuffer_width: u32,
     pub framebuffer_height: u32,
     pub framebuffer_stride: u32,
-
-    // 0 = RGB
-    // 1 = BGR
-    // 2 = Bitmask
-    // 3 = BltOnly
     pub framebuffer_format: u32,
 
     pub memory_map_addr: u64,
