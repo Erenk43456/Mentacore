@@ -5,7 +5,7 @@ use crate::memory::physical::PhysicalFrameAllocator;
 use crate::hardware::lapic::LAPIC_VIRTUAL_BASE;
 
 pub unsafe fn initialize(
-    allocator: &mut PhysicalFrameAllocator,
+    frame_allocator: &mut PhysicalFrameAllocator,
 ) -> hardware::lapic::Lapic {
     let mut lapic =
         match hardware::lapic::Lapic::discover() {
@@ -34,7 +34,7 @@ pub unsafe fn initialize(
 
     unsafe {
         match lapic_mapper.map(
-            allocator,
+            frame_allocator,
             LAPIC_VIRTUAL_BASE,
             lapic.physical_base(),
             memory::paging::PageFlags {

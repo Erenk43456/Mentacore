@@ -68,6 +68,26 @@ pub fn interrupts_enabled() -> bool {
 }
 
 #[inline]
+pub fn disable_interrupts() {
+    unsafe {
+        core::arch::asm!(
+            "cli",
+            options(nostack)
+        );
+    }
+}
+
+#[inline]
+pub fn enable_interrupts() {
+    unsafe {
+        core::arch::asm!(
+            "sti",
+            options(nostack)
+        );
+    }
+}
+
+#[inline]
 pub fn halt() {
     unsafe {
         core::arch::asm!(

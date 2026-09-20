@@ -5,15 +5,13 @@ use crate::memory;
 use crate::memory::physical::PhysicalFrameAllocator;
 
 pub unsafe fn initialize(
-    allocator: &mut PhysicalFrameAllocator,
+    frame_allocator: &mut PhysicalFrameAllocator,
     boot_info: &BootInfo,
 ) {
-    match unsafe {
-        memory::paging::init(
-            allocator,
-            boot_info,
-        )
-    } {
+    match memory::paging::init(
+        frame_allocator,
+        boot_info,
+    ) {
         Ok(()) => {
             debug::write(
                 b"Paging initialized.\r\n"

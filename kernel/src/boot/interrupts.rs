@@ -3,11 +3,9 @@ use crate::interrupts;
 use crate::memory::physical::PhysicalFrameAllocator;
 
 pub unsafe fn initialize(
-    allocator: PhysicalFrameAllocator,
+    frame_allocator: PhysicalFrameAllocator,
 ) {
-    unsafe {
-        interrupts::init(allocator);
-    }
+    interrupts::init(frame_allocator);
 
     debug::write(
         b"Interrupt system initialized.\r\n"

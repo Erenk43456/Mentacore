@@ -27,6 +27,16 @@ pub use tss::ist1_stack_top;
 pub use tss::kernel_stack_range;
 
 #[inline]
+pub fn disable_interrupts() {
+    state::disable_interrupts();
+}
+
+#[inline]
+pub fn enable_interrupts() {
+    state::enable_interrupts();
+}
+
+#[inline]
 pub fn halt() {
     state::halt();
 }

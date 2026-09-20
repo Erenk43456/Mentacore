@@ -207,11 +207,11 @@ pub unsafe fn initialize(
         }
     }
 
-    let mut allocator =
+    let mut frame_allocator =
         PhysicalFrameAllocator::new(frame_bitmap);
 
     if boot_info.kernel_image_size != 0 {
-        if allocator
+        if frame_allocator
             .reserve_range(
                 boot_info.kernel_image_addr,
                 boot_info.kernel_image_size,
@@ -229,7 +229,7 @@ pub unsafe fn initialize(
     }
 
     if boot_info.userspace_image_size != 0 {
-        if allocator
+        if frame_allocator
             .reserve_range(
                 boot_info.userspace_image_addr,
                 boot_info.userspace_image_size,
@@ -250,5 +250,5 @@ pub unsafe fn initialize(
         b"Memory initialized.\r\n"
     );
 
-    allocator
+    frame_allocator
 }
