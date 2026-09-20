@@ -1,30 +1,16 @@
 #![no_std]
 #![no_main]
 
+mod elf;
+mod filesystem;
+mod framebuffer;
+mod handoff;
+mod memory;
+
 extern crate alloc;
 
-use alloc::vec::Vec;
-use core::ptr;
-
-use elf::abi::PT_LOAD;
-use elf::endian::AnyEndian;
-use elf::ElfBytes;
-
-use mentacore_boot_protocol::{BootInfo, BOOT_PROTOCOL_VERSION};
-
-use uefi::boot::{self, AllocateType, MemoryType};
-use uefi::mem::memory_map::MemoryMap;
-use uefi::fs::FileSystem;
 use uefi::prelude::*;
-use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
-use uefi::{CString16, println};
-
-const KERNEL_PATH: &str = "\\kernel.elf";
-const PAGE_SIZE: u64 = 4096;
-const KERNEL_STACK_PAGES: usize = 4;
-
-const USERSPACE_PATH: &str = "\\userspace.elf";
-const MAX_USERSPACE_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
+use uefi::println;
 
 #[entry]
 fn main() -> Status {
@@ -46,7 +32,7 @@ fn main() -> Status {
 
     println!("Loading kernel...");
 
-    let kernel = match load_kernel_file() {
+    let kernel = match filesystem::load_kernel() {
         Ok(kernel) => kernel,
         Err(_) => {
             println!("ERROR: Failed to read kernel.");
@@ -59,122 +45,34 @@ fn main() -> Status {
 
     println!("Kernel file loaded: {} bytes", kernel.len());
 
-    let elf = match ElfBytes::<AnyEndian>::minimal_parse(&kernel) {
+    let kernel_elf = match elf::KernelElf::parse(&kernel) {
         Ok(elf) => elf,
-        Err(_) => {
-            println!("ERROR: Invalid ELF.");
-
-            loop {
-                core::hint::spin_loop();
-            }
+        Err(_) => loop {
+            core::hint::spin_loop();
         }
     };
 
-    let entry = elf.ehdr.e_entry;
+    let entry = kernel_elf.entry();
 
     println!("Kernel entry: {:#018x}", entry);
     println!();
-
-    let segments = match elf.segments() {
-        Some(segments) => segments,
-        None => {
-            println!("ERROR: ELF has no program headers.");
-
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-    };
 
     // ------------------------------------------------------------
     // Determine complete kernel memory range.
     // ------------------------------------------------------------
 
-    let mut kernel_start = u64::MAX;
-    let mut kernel_end = 0u64;
-    let mut load_segment_count = 0usize;
-
-    for segment in segments.iter() {
-        if segment.p_type != PT_LOAD {
-            continue;
-        }
-
-        load_segment_count += 1;
-
-        if segment.p_memsz < segment.p_filesz {
-            println!("ERROR: Invalid PT_LOAD sizes.");
-
-            loop {
+    let (kernel_start, kernel_size, kernel_pages) =
+        match kernel_elf.memory_range() {
+            Ok(range) => range,
+            Err(_) => loop {
                 core::hint::spin_loop();
             }
-        }
-
-        let segment_end = match segment.p_vaddr.checked_add(segment.p_memsz) {
-            Some(end) => end,
-            None => {
-                println!("ERROR: Segment address overflow.");
-
-                loop {
-                    core::hint::spin_loop();
-                }
-            }
         };
-
-        let page_start = segment.p_vaddr & !(PAGE_SIZE - 1);
-
-        let page_end = match align_up(segment_end, PAGE_SIZE) {
-            Some(end) => end,
-            None => {
-                println!("ERROR: Segment alignment overflow.");
-
-                loop {
-                    core::hint::spin_loop();
-                }
-            }
-        };
-
-        if page_start < kernel_start {
-            kernel_start = page_start;
-        }
-
-        if page_end > kernel_end {
-            kernel_end = page_end;
-        }
-    }
-
-    if load_segment_count == 0 {
-        println!("ERROR: ELF has no PT_LOAD segments.");
-
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    if kernel_end <= kernel_start {
-        println!("ERROR: Invalid kernel memory range.");
-
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
-    let kernel_size = kernel_end - kernel_start;
-
-    let kernel_pages = match usize::try_from(kernel_size / PAGE_SIZE) {
-        Ok(pages) => pages,
-        Err(_) => {
-            println!("ERROR: Kernel page count overflow.");
-
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-    };
 
     println!(
         "Kernel memory range: {:#018x} - {:#018x}",
         kernel_start,
-        kernel_end
+        kernel_start + kernel_size
     );
 
     println!("Kernel pages: {}", kernel_pages);
@@ -183,71 +81,19 @@ fn main() -> Status {
     // Allocate complete kernel image.
     // ------------------------------------------------------------
 
-    println!("Allocating kernel memory...");
-
-    let allocation = match boot::allocate_pages(
-        AllocateType::Address(kernel_start.into()),
-        MemoryType::LOADER_CODE,
-        kernel_pages,
-    ) {
-        Ok(ptr) => ptr,
-        Err(_) => {
-            println!("ERROR: Failed to allocate kernel pages.");
-
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-    };
-
-    let allocated_address = allocation.as_ptr() as u64;
-
-    if allocated_address != kernel_start {
-        println!("ERROR: Kernel allocated at wrong address.");
-
+    if memory::allocate_kernel(kernel_start, kernel_pages).is_err() {
         loop {
             core::hint::spin_loop();
         }
     }
 
-    println!("Kernel memory allocated.");
-
     // ------------------------------------------------------------
     // Load PT_LOAD segments.
     // ------------------------------------------------------------
 
-    for segment in segments.iter() {
-        if segment.p_type != PT_LOAD {
-            continue;
-        }
-
-        let data = match elf.segment_data(&segment) {
-            Ok(data) => data,
-            Err(_) => {
-                println!("ERROR: Failed to read ELF segment.");
-
-                loop {
-                    core::hint::spin_loop();
-                }
-            }
-        };
-
-        let destination = segment.p_vaddr as *mut u8;
-
-        unsafe {
-            ptr::copy_nonoverlapping(
-                data.as_ptr(),
-                destination,
-                data.len(),
-            );
-
-            if segment.p_memsz > segment.p_filesz {
-                ptr::write_bytes(
-                    destination.add(segment.p_filesz as usize),
-                    0,
-                    (segment.p_memsz - segment.p_filesz) as usize,
-                );
-            }
+    if kernel_elf.load_segments().is_err() {
+        loop {
+            core::hint::spin_loop();
         }
     }
 
@@ -261,7 +107,7 @@ fn main() -> Status {
     println!();
     println!("Loading userspace...");
 
-    let userspace = match load_userspace_file() {
+    let userspace = match filesystem::load_userspace() {
         Ok(userspace) => userspace,
         Err(_) => {
             println!("ERROR: Failed to read userspace ELF.");
@@ -272,14 +118,6 @@ fn main() -> Status {
         }
     };
 
-    if userspace.is_empty() {
-        println!("ERROR: Userspace ELF is empty.");
-
-        loop {
-            core::hint::spin_loop();
-        }
-    }
-
     println!(
         "Userspace ELF loaded: {} bytes",
         userspace.len()
@@ -289,111 +127,29 @@ fn main() -> Status {
     // Userspace image
     // ------------------------------------------------------------
 
-    let userspace_size = userspace.len() as u64;
-
-    let userspace_pages_size = match align_up(userspace_size, PAGE_SIZE) {
-        Some(size) => size,
-        None => {
-            println!("ERROR: Userspace image size overflow.");
-
-            loop {
-                core::hint::spin_loop();
-            }
+    let userspace_image = match memory::allocate_userspace(&userspace) {
+        Ok(image) => image,
+        Err(_) => loop {
+            core::hint::spin_loop();
         }
     };
 
-    let userspace_pages = match usize::try_from(userspace_pages_size / PAGE_SIZE) {
-        Ok(pages) if pages > 0 => pages,
-        _ => {
-            println!("ERROR: Invalid userspace page count.");
-
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-    };
-
-    println!("Userspace pages: {}", userspace_pages);
-
-    println!("Allocating userspace image memory...");
-
-    let userspace_allocation = match boot::allocate_pages(
-        AllocateType::MaxAddress(MAX_USERSPACE_PHYSICAL_ADDRESS.into()),
-        MemoryType::LOADER_DATA,
-        userspace_pages,
-    ) {
-        Ok(ptr) => ptr,
-        Err(_) => {
-            println!("ERROR: Failed to allocate userspace image.");
-
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-    };
-
-    let userspace_image_addr = userspace_allocation.as_ptr() as u64;
-
-    println!(
-        "Userspace image: {:#018x} - {:#018x}",
-        userspace_image_addr,
-        userspace_image_addr + userspace_pages_size
-    );
-
-    unsafe {
-        ptr::copy_nonoverlapping(
-            userspace.as_ptr(),
-            userspace_image_addr as *mut u8,
-            userspace.len(),
-        );
-    }
-
-    println!("Userspace image copied.");
+    let userspace_image_addr = userspace_image.address;
+    let userspace_size = userspace_image.size;
 
     // ------------------------------------------------------------
     // Allocate kernel stack.
     // ------------------------------------------------------------
 
-    println!("Allocating kernel stack...");
-
-    let stack_allocation = match boot::allocate_pages(
-        AllocateType::AnyPages,
-        MemoryType::LOADER_DATA,
-        KERNEL_STACK_PAGES,
-    ) {
-        Ok(ptr) => ptr,
-        Err(_) => {
-            println!("ERROR: Failed to allocate kernel stack.");
-
-            loop {
-                core::hint::spin_loop();
-            }
+    let kernel_stack = match memory::allocate_kernel_stack() {
+        Ok(stack) => stack,
+        Err(_) => loop {
+            core::hint::spin_loop();
         }
     };
 
-    let stack_base = stack_allocation.as_ptr() as u64;
-
-    let stack_size = match (KERNEL_STACK_PAGES as u64).checked_mul(PAGE_SIZE) {
-        Some(size) => size,
-        None => {
-            println!("ERROR: Kernel stack size overflow.");
-
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-    };
-
-    let stack_top = match stack_base.checked_add(stack_size) {
-        Some(top) => top,
-        None => {
-            println!("ERROR: Kernel stack address overflow.");
-
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-    };
+    let stack_base = kernel_stack.base;
+    let stack_top = kernel_stack.top;
 
     println!(
         "Kernel stack: {:#018x} - {:#018x}",
@@ -408,7 +164,7 @@ fn main() -> Status {
     println!();
     println!("Initializing framebuffer...");
 
-    let mut boot_info = match get_framebuffer_info() {
+    let mut boot_info = match framebuffer::initialize() {
         Ok(info) => info,
         Err(_) => {
             println!("ERROR: Failed to initialize framebuffer.");
@@ -466,148 +222,9 @@ fn main() -> Status {
     // Kernel handoff.
     // ------------------------------------------------------------
 
-    println!();
-    println!("Preparing kernel handoff...");
-    println!("Exiting UEFI boot services...");
-
-    let memory_map = unsafe {
-        boot::exit_boot_services(None)
-    };
-
-    let memory_map_meta = memory_map.meta();
-
-    boot_info.memory_map_addr =
-        memory_map.buffer().as_ptr() as u64;
-
-    boot_info.memory_map_size =
-        memory_map_meta.map_size as u64;
-
-    boot_info.memory_map_descriptor_size =
-        memory_map_meta.desc_size as u32;
-
-    boot_info.memory_map_descriptor_version =
-        memory_map_meta.desc_version;
-
-    unsafe {
-        jump_to_kernel(
-            entry,
-            stack_top,
-            &boot_info as *const BootInfo as u64,
-        );
-    }
-}
-
-fn load_kernel_file() -> Result<Vec<u8>, ()> {
-    let fs = boot::get_image_file_system(boot::image_handle())
-        .map_err(|_| ())?;
-
-    let mut fs = FileSystem::new(fs);
-
-    let path = CString16::try_from(KERNEL_PATH)
-        .map_err(|_| ())?;
-
-    fs.read(path.as_ref())
-        .map_err(|_| ())
-}
-
-fn load_userspace_file() -> Result<Vec<u8>, ()> {
-    let fs = boot::get_image_file_system(boot::image_handle())
-        .map_err(|_| ())?;
-
-    let mut fs = FileSystem::new(fs);
-
-    let path = CString16::try_from(USERSPACE_PATH)
-        .map_err(|_| ())?;
-
-    fs.read(path.as_ref())
-        .map_err(|_| ())
-}
-
-fn get_framebuffer_info() -> Result<BootInfo, ()> {
-    let handle = boot::get_handle_for_protocol::<GraphicsOutput>()
-        .map_err(|_| ())?;
-
-    let mut gop = boot::open_protocol_exclusive::<GraphicsOutput>(handle)
-        .map_err(|_| ())?;
-
-    const TARGET_WIDTH: usize = 1920;
-    const TARGET_HEIGHT: usize = 1080;
-
-    let mut selected_mode = None;
-
-    for mode in gop.modes() {
-        let info = mode.info();
-        let (width, height) = info.resolution();
-
-        if width == TARGET_WIDTH && height == TARGET_HEIGHT {
-            selected_mode = Some(mode);
-            break;
-        }
-    }
-
-    if let Some(mode) = selected_mode {
-        println!("Found preferred GOP mode.");
-
-        gop.set_mode(&mode).map_err(|_| ())?;
-
-        println!("GOP mode changed.");
-    } else {
-        println!("Preferred GOP mode not found.");
-        println!("Keeping current GOP mode.");
-    }
-
-    let info = gop.current_mode_info();
-
-    let (width, height) = info.resolution();
-    let stride = info.stride();
-
-    let mut framebuffer = gop.frame_buffer();
-
-    let framebuffer_addr = framebuffer.as_mut_ptr() as u64;
-    let framebuffer_size = framebuffer.size() as u64;
-
-    let framebuffer_format = match info.pixel_format() {
-        PixelFormat::Rgb => 0,
-        PixelFormat::Bgr => 1,
-        PixelFormat::Bitmask => 2,
-        PixelFormat::BltOnly => 3,
-    };
-
-    Ok(BootInfo {
-        version: BOOT_PROTOCOL_VERSION,
-
-        framebuffer_addr,
-        framebuffer_size,
-        framebuffer_width: width as u32,
-        framebuffer_height: height as u32,
-        framebuffer_stride: stride as u32,
-        framebuffer_format,
-
-        kernel_image_addr: 0,
-        kernel_image_size: 0,
-
-        userspace_image_addr: 0,
-        userspace_image_size: 0,
-
-        memory_map_addr: 0,
-        memory_map_size: 0,
-        memory_map_descriptor_size: 0,
-        memory_map_descriptor_version: 0,
-    })
-}
-
-fn align_up(value: u64, alignment: u64) -> Option<u64> {
-    let mask = alignment - 1;
-
-    value
-        .checked_add(mask)
-        .map(|value| value & !mask)
-}
-
-unsafe extern "C" {
-    fn jump_to_kernel(
-        entry: u64,
-        stack_top: u64,
-        boot_info: u64,
-    ) -> !;
+    handoff::enter_kernel(
+        &mut boot_info,
+        entry,
+        stack_top,
+    );
 }
