@@ -1,5 +1,7 @@
 use mentacore_boot_protocol::BootInfo;
 
+pub(crate) const UEFI_CONVENTIONAL_MEMORY: u32 = 7;
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct MemoryDescriptor {
@@ -63,7 +65,7 @@ impl<'a> MemoryMap<'a> {
                 self.descriptor(index)?
             };
 
-            if descriptor.ty != 7 {
+            if descriptor.ty != UEFI_CONVENTIONAL_MEMORY {
                 continue;
             }
 
@@ -103,7 +105,7 @@ impl<'a> MemoryMap<'a> {
                 self.descriptor(index)?
             };
 
-            if descriptor.ty != 7 {
+            if descriptor.ty != UEFI_CONVENTIONAL_MEMORY {
                 continue;
             }
 

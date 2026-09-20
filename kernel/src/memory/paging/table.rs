@@ -14,7 +14,10 @@ use super::{
     WRITABLE,
 };
 
-use crate::memory::memory_map::MemoryMap;
+use crate::memory::memory_map::{
+    MemoryMap,
+    UEFI_CONVENTIONAL_MEMORY,
+};
 use crate::memory::physical::PhysicalFrameAllocator;
 
 impl PageTable {
@@ -195,7 +198,7 @@ pub(super) unsafe fn map_physical_memory(
                 .ok_or(())?
         };
 
-        if descriptor.ty != 7 {
+        if descriptor.ty != UEFI_CONVENTIONAL_MEMORY {
             continue;
         }
 

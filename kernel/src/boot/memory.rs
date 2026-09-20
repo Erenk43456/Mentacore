@@ -2,7 +2,10 @@ use mentacore_boot_protocol::BootInfo;
 
 use crate::debug;
 use crate::memory;
-use crate::memory::memory_map::MemoryMap;
+use crate::memory::memory_map::{
+    MemoryMap,
+    UEFI_CONVENTIONAL_MEMORY,
+};
 use crate::memory::physical::PhysicalFrameAllocator;
 
 pub unsafe fn initialize(
@@ -140,7 +143,7 @@ pub unsafe fn initialize(
                 }
             };
 
-        if descriptor.ty == 7 {
+        if descriptor.ty == UEFI_CONVENTIONAL_MEMORY {
             unsafe {
                 frame_bitmap.mark_free_range(
                     descriptor.physical_start,
