@@ -5,7 +5,6 @@ use crate::{
     cpu,
     debug,
     interrupts,
-    memory,
     scheduler::SchedulerRuntime,
 };
 

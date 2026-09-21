@@ -1,5 +1,6 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(feature = "kernel-tests")]
 use crate::thread::InterruptContext;
 
 pub const LAPIC_TIMER_VECTOR: u8 = 0x40;
@@ -15,6 +16,7 @@ static LAPIC_TIMER_TICKS: AtomicU64 =
 static LAPIC_TIMER_PREEMPTION_ENABLED: AtomicU64 =
     AtomicU64::new(0);
 
+#[cfg(feature = "kernel-tests")]   
 pub fn timer_ticks() -> u64 {
     TIMER_TICKS.load(Ordering::Relaxed)
 }

@@ -2,14 +2,14 @@ mod queue;
 mod scheduler;
 mod runtime;
 
-pub use queue::{
-    RunnableQueue,
-    MAX_RUNNABLE_THREADS,
-};
+#[cfg(feature = "kernel-tests")]
+pub use queue::RunnableQueue;
 
 pub use scheduler::Scheduler;
+pub use runtime::SchedulerRuntime;
+
+#[cfg(feature = "kernel-tests")]
 pub use runtime::{
-    SchedulerRuntime,
     SCHEDULER_RUNTIME,
     IDLE_THREAD_ID,
     KERNEL_PROCESS_ID,

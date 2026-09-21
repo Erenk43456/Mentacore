@@ -143,6 +143,7 @@ pub fn ist1_stack_range() -> (u64, u64) {
     (start, end)
 }
 
+#[cfg(feature = "kernel-tests")]
 pub fn kernel_stack_range() -> (u64, u64) {
     let start =
         core::ptr::addr_of!(KERNEL_STACK) as u64;
@@ -151,16 +152,4 @@ pub fn kernel_stack_range() -> (u64, u64) {
         start + KERNEL_STACK_SIZE as u64;
 
     (start, end)
-}
-
-#[cfg(feature = "verbose-boot")]
-pub(super) fn ist1_stack_top() -> u64 {
-    unsafe {
-        core::ptr::read_unaligned(
-            (core::ptr::addr_of!(TSS)
-                as *const u8)
-                .add(36)
-                as *const u64,
-        )
-    }
 }

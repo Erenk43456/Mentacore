@@ -1,8 +1,5 @@
 use crate::memory::physical::PhysicalFrameAllocator;
-use crate::memory::paging::{
-    PageFlags,
-    PAGE_SIZE,
-};
+
 use crate::process::{
     ProcessId,
     ProcessManager,
@@ -10,9 +7,9 @@ use crate::process::{
 use crate::thread::{
     KernelInterruptContext,
     ThreadManager,
-    ThreadState,
     ThreadId,
 };
+
 use crate::sync::Spinlock;
 
 use super::Scheduler;
@@ -81,22 +78,14 @@ impl SchedulerRuntime {
         })
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn scheduler(&self) -> &Scheduler {
         &self.scheduler
     }
 
-    pub fn scheduler_mut(&mut self) -> &mut Scheduler {
-        &mut self.scheduler
-    }
-
+    #[cfg(feature = "kernel-tests")]
     pub fn thread_manager(&self) -> &ThreadManager {
         &self.manager
-    }
-
-    pub fn thread_manager_mut(
-        &mut self,
-    ) -> &mut ThreadManager {
-        &mut self.manager
     }
 
     pub fn current(&self) -> Option<ThreadId> {
@@ -108,50 +97,7 @@ impl SchedulerRuntime {
         guard.as_ref().and_then(|runtime| runtime.current())
     }
 
-    pub fn current_state(&self) -> Option<ThreadState> {
-        self.current()
-            .and_then(|thread_id|
-                self.manager
-                    .get(thread_id)
-                    .map(|thread| thread.state())
-            )
-    }
-
-    pub fn create_thread(
-        thread_id: ThreadId,
-        process_id: ProcessId,
-        allocator: &mut PhysicalFrameAllocator,
-        entry: crate::thread::ThreadEntry,
-    ) -> Result<(), ()> {
-        let mut guard =
-            SCHEDULER_RUNTIME.lock_irqsave();
-
-        let runtime =
-            guard.as_mut().ok_or(())?;
-
-        runtime.manager.create(
-            thread_id,
-            process_id,
-            allocator,
-            entry,
-        )?;
-
-        if runtime.scheduler
-            .add_thread(
-                &runtime.manager,
-                thread_id,
-            )
-            .is_err()
-        {
-            let _ =
-                runtime.manager.remove(thread_id);
-
-            return Err(());
-        }
-
-        Ok(())
-    }
-
+    #[cfg(feature = "kernel-tests")]
     pub fn prepare_thread(
         thread_id: ThreadId,
         process_id: ProcessId,
@@ -173,6 +119,7 @@ impl SchedulerRuntime {
         Ok(())
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn activate_thread(
         thread_id: ThreadId,
     ) -> Result<(), ()> {
@@ -189,6 +136,7 @@ impl SchedulerRuntime {
         Ok(())
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn start_thread(
         thread_id: ThreadId,
     ) -> Result<(), ()> {
@@ -389,16 +337,6 @@ impl SchedulerRuntime {
             thread.interrupt_rsp();
 
         drop(guard);
-
-        let mut current_rsp = 0u64;
-
-        unsafe {
-            crate::thread::interrupt_context_switch_to_address_space(
-                &raw mut current_rsp,
-                next_rsp as *const u64,
-                next_pml4,
-            );
-        }
 
         let mut current_rsp = 0u64;
 

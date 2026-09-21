@@ -2,7 +2,6 @@ use crate::memory::paging::{
     KERNEL_SPACE_START,
     USER_SPACE_END,
 };
-use crate::scheduler::SchedulerRuntime;
 use crate::syscall::{
     dispatch,
     validate_user_address,

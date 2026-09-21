@@ -5,7 +5,6 @@ use crate::thread::{
     KERNEL_STACK_PAGES,
     KERNEL_STACK_SIZE,
     Thread,
-    ThreadManager,
     ThreadState,
 };
 
@@ -13,14 +12,6 @@ extern "C" fn test_thread_entry() -> ! {
     loop {
         core::hint::spin_loop();
     }
-}
-
-fn test_stack() -> KernelStack {
-    KernelStack::new(
-        0x0010_0000,
-        0x0010_0000 + KERNEL_STACK_SIZE,
-    )
-    .unwrap()
 }
 
 pub(super) fn test_thread_creation(
@@ -97,7 +88,7 @@ pub(super) fn test_thread_context(
     context.rsp()
         == thread.kernel_stack().top() - 8
         && context.rip()
-            == test_thread_entry as usize as u64
+            == test_thread_entry as *const () as usize as u64
         && context.rflags() == 0x202
         && context.rbx == 0
         && context.rbp == 0
@@ -147,7 +138,7 @@ fn test_interrupt_context(
         &*(interrupt_rsp as *const crate::thread::KernelInterruptContext)
     };
 
-    frame.rip == test_thread_entry as usize as u64
+    frame.rip == test_thread_entry as *const () as usize as u64
         && frame.cs == 0x08
         && frame.rflags == 0x202
 }
@@ -285,22 +276,22 @@ pub(super) fn test_context_switch() -> bool {
 
         crate::debug::write(b"CURRENT RSP: ");
         crate::debug::write_hex(
-            unsafe { core::ptr::read(core::ptr::addr_of!((*current_ptr).rsp)) },
+            core::ptr::read(core::ptr::addr_of!((*current_ptr).rsp)),
         );
 
         crate::debug::write(b"CURRENT RIP: ");
         crate::debug::write_hex(
-            unsafe { core::ptr::read(core::ptr::addr_of!((*current_ptr).rip)) },
+            core::ptr::read(core::ptr::addr_of!((*current_ptr).rip)),
         );
 
         crate::debug::write(b"NEXT RSP: ");
         crate::debug::write_hex(
-            unsafe { core::ptr::read(core::ptr::addr_of!((*next_ptr).rsp)) },
+            core::ptr::read(core::ptr::addr_of!((*next_ptr).rsp)),
         );
 
         crate::debug::write(b"NEXT RIP: ");
         crate::debug::write_hex(
-            unsafe { core::ptr::read(core::ptr::addr_of!((*next_ptr).rip)) },
+            core::ptr::read(core::ptr::addr_of!((*next_ptr).rip)),
         );
 
         crate::debug::write(b"TRAMPOLINE: ");

@@ -209,8 +209,6 @@ fn test_no_load_segments() -> bool {
 fn test_entry_not_in_load_segment() -> bool {
     let mut data = valid_elf();
 
-    let ph = 0x40;
-
     write_u64(&mut data, 24, ENTRY + 0x1000);
 
     matches!(

@@ -99,6 +99,7 @@ impl KernelStack {
         self.top
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn size(&self) -> u64 {
         self.top - self.base
     }

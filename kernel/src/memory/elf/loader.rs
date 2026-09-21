@@ -70,11 +70,8 @@ impl LoadedElf {
     pub fn segment_count(&self) -> usize {
         self.segment_count
     }
-
-    pub fn user_stack_top(&self) -> u64 {
-        self.user_stack_top
-    }
-
+    
+    #[cfg(feature = "kernel-tests")]
     pub fn segment(
         &self,
         index: usize,
@@ -84,10 +81,6 @@ impl LoadedElf {
         } else {
             Some(&self.segments[index])
         }
-    }
-
-    pub fn address_space(&self) -> &AddressSpace {
-        &self.address_space
     }
 
     pub fn into_address_space(self) -> AddressSpace {

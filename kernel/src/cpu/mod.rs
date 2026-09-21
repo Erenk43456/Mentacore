@@ -1,12 +1,8 @@
 mod gdt;
 mod tss;
-mod features;
 mod msr;
 mod tsc;
 mod state;
-
-#[cfg(feature = "verbose-boot")]
-pub use features::CpuInfo;
 
 pub use state::InterruptState;
 
@@ -14,15 +10,13 @@ pub use state::InterruptState;
 pub use state::interrupts_enabled;
 
 #[cfg(feature = "kernel-tests")]
-pub use tsc::{calibrate_tsc, read_tsc};
+pub use tsc::calibrate_tsc;
 
 pub use msr::read_msr;
 
 pub use tss::ist1_stack_range;
 
-#[cfg(feature = "verbose-boot")]
-pub use tss::ist1_stack_top;
-
+#[cfg(feature = "kernel-tests")]
 pub use tss::kernel_stack_range;
 
 pub(crate) use gdt::{

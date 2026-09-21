@@ -1,8 +1,7 @@
 use super::{
-    table::{ensure_table, find_page_table, page_table_indices},
+    table::{ensure_table, page_table_indices},
     PageFlags,
     PageTable,
-    ADDRESS_MASK,
     HUGE_PAGE,
     NX,
     PAGE_SIZE,
@@ -11,6 +10,13 @@ use super::{
     USER,
     WRITABLE,
 };
+
+#[cfg(feature = "kernel-tests")]
+use super::{
+    table::find_page_table,
+    ADDRESS_MASK,
+};
+
 use crate::memory::physical::PhysicalFrameAllocator;
 
 pub(super) fn flags_to_entry(
@@ -140,6 +146,7 @@ pub unsafe fn map_page(
     Ok(())
 }
 
+#[cfg(feature = "kernel-tests")]
 pub unsafe fn unmap_page(
     pml4: *mut PageTable,
     virtual_address: u64,

@@ -3,7 +3,6 @@ use super::{
     program::{
         LoadSegment,
         PT_LOAD,
-        PROGRAM_HEADER_SIZE,
     },
     ElfError,
 };

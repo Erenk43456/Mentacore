@@ -4,12 +4,9 @@ mod queue;
 mod round_robin;
 
 use crate::tests::scheduler::integration::{
-    scheduler_accepts_managed_thread,
     scheduler_manages_thread_states,
     scheduler_preempts_thread,
-    scheduler_rejects_unknown_thread,
     scheduler_runtime_starts_idle_thread,
-    scheduler_selects_managed_threads,
     scheduler_switches_to_selected_thread,
     scheduler_preserves_state_on_missing_thread,
     scheduler_marks_replacement_running,

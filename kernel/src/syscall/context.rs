@@ -33,26 +33,32 @@ impl SyscallContext {
         self.rax
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub const fn arg0(&self) -> u64 {
         self.rdi
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub const fn arg1(&self) -> u64 {
         self.rsi
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub const fn arg2(&self) -> u64 {
         self.rdx
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub const fn arg3(&self) -> u64 {
         self.r10
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub const fn arg4(&self) -> u64 {
         self.r8
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub const fn arg5(&self) -> u64 {
         self.r9
     }

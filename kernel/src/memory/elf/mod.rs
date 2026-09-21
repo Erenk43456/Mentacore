@@ -3,21 +3,9 @@ mod parser;
 mod program;
 mod loader;
 
-pub use header::ElfHeader;
+pub use parser::ParsedElf;
 
-pub use parser::{
-    ParsedElf,
-    MAX_LOAD_SEGMENTS,
-};
-
-pub use program::{
-    LoadSegment,
-    SegmentFlags,
-    PF_R,
-    PF_W,
-    PF_X,
-    PT_LOAD,
-};
+pub use program::LoadSegment;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ElfError {
@@ -41,7 +29,5 @@ pub enum ElfError {
 
 pub use loader::{
     load,
-    ElfLoadError,
     LoadedElf,
-    LoadedSegment,
 };

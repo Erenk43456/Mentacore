@@ -1,8 +1,10 @@
 use crate::thread::{
-    context_switch,
     ThreadId,
     ThreadManager,
 };
+
+#[cfg(feature = "kernel-tests")]
+use crate::thread::context_switch;
 
 use super::queue::RunnableQueue;
 
@@ -59,6 +61,7 @@ impl Scheduler {
         Some(current)
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn switch_to_next(
         &mut self,
         manager: &mut ThreadManager,
@@ -265,6 +268,7 @@ impl Scheduler {
         self.queue.get(next_index)
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn next(&mut self) -> Option<ThreadId> {
         let count = self.queue.count();
 
@@ -285,10 +289,12 @@ impl Scheduler {
         self.queue.get(next_index)
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn count(&self) -> usize {
         self.queue.count()
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }

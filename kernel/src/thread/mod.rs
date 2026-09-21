@@ -7,24 +7,25 @@ mod thread;
 pub(crate) const INITIAL_RFLAGS: u64 = 0x202;
 
 pub use context::{
-    context_switch,
     interrupt_context_switch,
     interrupt_context_switch_to_address_space,
     KernelContext,
 };
+
+#[cfg(feature = "kernel-tests")]
+pub use context::context_switch;
 
 pub use interrupt_context::{
     InterruptContext,
     KernelInterruptContext,
 };
 
-pub use manager::{
-    ThreadManager,
-    MAX_THREADS,
-};
+pub use manager::ThreadManager;
 
+pub use stack::KernelStack;
+
+#[cfg(feature = "kernel-tests")]
 pub use stack::{
-    KernelStack,
     KERNEL_STACK_ALIGNMENT,
     KERNEL_STACK_PAGES,
     KERNEL_STACK_SIZE,

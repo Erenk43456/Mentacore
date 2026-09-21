@@ -40,9 +40,11 @@ pub const USER_SPACE_START: u64 =
 pub const USER_SPACE_END: u64 =
     0x0000_7FFF_FFFF_FFFF;
 
+#[cfg(feature = "kernel-tests")]
 pub const KERNEL_SPACE_START: u64 =
     0xFFFF_8000_0000_0000;
 
+#[cfg(feature = "kernel-tests")]
 pub const KERNEL_SPACE_END: u64 =
     0xFFFF_FFFF_FFFF_FFFF;
 
@@ -96,11 +98,13 @@ pub fn is_user_address(address: u64) -> bool {
         && address <= USER_SPACE_END
 }
 
+#[cfg(feature = "kernel-tests")]
 pub fn is_kernel_address(address: u64) -> bool {
     address >= KERNEL_SPACE_START
         && address <= KERNEL_SPACE_END
 }
 
+#[cfg(feature = "kernel-tests")]
 pub fn physical_to_virtual(
     physical_address: u64,
 ) -> Option<u64> {
@@ -109,6 +113,7 @@ pub fn physical_to_virtual(
     )
 }
 
+#[cfg(feature = "kernel-tests")]
 pub unsafe fn is_user_page_mapped(
     pml4: *mut PageTable,
     virtual_address: u64,
@@ -509,10 +514,7 @@ pub use address_space::{
     Mapper,
 };
 
-pub use mapper::{
-    map_page,
-    unmap_page,
-};
+pub use mapper::map_page;
 
 #[cfg(feature = "kernel-tests")]
 pub(crate) fn test_flags_to_entry(
@@ -521,8 +523,7 @@ pub(crate) fn test_flags_to_entry(
     mapper::test_flags_to_entry(flags)
 }
 
-pub use registers::{
-    current_pml4,
-    current_pml4_address,
-    load_cr3,
-};
+pub use registers::current_pml4;
+
+#[cfg(feature = "kernel-tests")]
+pub use registers::current_pml4_address;

@@ -1,3 +1,4 @@
+#[cfg(feature = "kernel-tests")]
 use crate::memory::paging::{
     current_pml4,
     is_user_address,
@@ -5,6 +6,7 @@ use crate::memory::paging::{
     PAGE_SIZE,
 };
 
+#[cfg(feature = "kernel-tests")]
 pub fn validate_user_address(
     address: u64,
 ) -> bool {
@@ -12,6 +14,7 @@ pub fn validate_user_address(
         && is_user_address(address)
 }
 
+#[cfg(feature = "kernel-tests")]
 pub fn validate_user_buffer(
     address: u64,
     length: u64,

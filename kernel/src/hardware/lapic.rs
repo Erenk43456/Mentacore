@@ -10,18 +10,14 @@ const APIC_GLOBAL_ENABLE: u64 = 1 << 11;
 pub const LAPIC_VIRTUAL_BASE: u64 =
     0xFFFF_A000_0000_0000;
 
-pub const LAPIC_ID_OFFSET: u64 = 0x020;
-pub const LAPIC_VERSION_OFFSET: u64 = 0x030;
 pub const LAPIC_EOI_OFFSET: u64 = 0x0B0;
 
 pub const LAPIC_SVR_OFFSET: u64 = 0x0F0;
 pub const LAPIC_SVR_ENABLE: u32 = 1 << 8;
 
 pub const LAPIC_LVT_TIMER_OFFSET: u64 = 0x320;
-pub const LAPIC_LVT_ERROR_OFFSET: u64 = 0x370;
 
 pub const LAPIC_TIMER_INITIAL_COUNT_OFFSET: u64 = 0x380;
-pub const LAPIC_TIMER_CURRENT_COUNT_OFFSET: u64 = 0x390;
 pub const LAPIC_TIMER_DIVIDE_OFFSET: u64 = 0x3E0;
 
 pub const LAPIC_LVT_TIMER_PERIODIC: u32 = 1 << 17;
@@ -30,7 +26,6 @@ pub const LAPIC_LVT_MASKED: u32 = 1 << 16;
 pub struct Lapic {
     physical_base: u64,
     virtual_base: u64,
-    msr_value: u64,
 }
 
 impl Lapic {
@@ -52,7 +47,6 @@ impl Lapic {
         Some(Self {
             physical_base,
             virtual_base: 0,
-            msr_value,
         })
     }
 
@@ -65,14 +59,6 @@ impl Lapic {
 
     pub fn physical_base(&self) -> u64 {
         self.physical_base
-    }
-
-    pub fn virtual_base(&self) -> u64 {
-        self.virtual_base
-    }
-
-    pub fn msr_value(&self) -> u64 {
-        self.msr_value
     }
 
     pub unsafe fn read_u32(
@@ -102,29 +88,6 @@ impl Lapic {
         }
     }
 
-    pub unsafe fn id(&self) -> u32 {
-        unsafe {
-            self.read_u32(LAPIC_ID_OFFSET)
-        }
-    }
-
-    pub unsafe fn version(&self) -> u32 {
-        unsafe {
-            self.read_u32(
-                LAPIC_VERSION_OFFSET
-            )
-        }
-    }
-
-    pub unsafe fn write_eoi(&self) {
-        unsafe {
-            self.write_u32(
-                LAPIC_EOI_OFFSET,
-                0,
-            );
-        }
-    }
-
     pub unsafe fn svr(&self) -> u32 {
         unsafe {
             self.read_u32(LAPIC_SVR_OFFSET)
@@ -143,38 +106,15 @@ impl Lapic {
         }
     }
 
-    pub unsafe fn lvt_timer(&self) -> u32 {
-        unsafe {
-            self.read_u32(
-                LAPIC_LVT_TIMER_OFFSET
-            )
-        }
-    }
-
-    pub unsafe fn set_lvt_timer(&self, value: u32) {
+    pub unsafe fn set_lvt_timer(
+        &self,
+        value: u32,
+    ) {
         unsafe {
             self.write_u32(
                 LAPIC_LVT_TIMER_OFFSET,
                 value,
             );
-        }
-    }
-
-    pub unsafe fn lvt_error(&self) -> u32 {
-        unsafe {
-            self.read_u32(
-                LAPIC_LVT_ERROR_OFFSET
-            )
-        }
-    }
-
-    pub unsafe fn timer_initial_count(
-        &self,
-    ) -> u32 {
-        unsafe {
-            self.read_u32(
-                LAPIC_TIMER_INITIAL_COUNT_OFFSET
-            )
         }
     }
 
@@ -190,6 +130,7 @@ impl Lapic {
         }
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub unsafe fn arm_timer_oneshot(
         &self,
         vector: u8,
@@ -202,15 +143,15 @@ impl Lapic {
             );
 
             self.set_timer_divide(
-                LAPIC_TIMER_DIVIDE_BY_1
+                LAPIC_TIMER_DIVIDE_BY_1,
             );
 
             self.set_timer_initial_count(
-                initial_count
+                initial_count,
             );
 
             self.set_lvt_timer(
-                vector as u32
+                vector as u32,
             );
         }
     }
@@ -227,7 +168,9 @@ impl Lapic {
                     | vector as u32,
             );
 
-            self.set_timer_divide(LAPIC_TIMER_DIVIDE_BY_1);
+            self.set_timer_divide(
+                LAPIC_TIMER_DIVIDE_BY_1,
+            );
 
             self.set_timer_initial_count(
                 initial_count,
@@ -237,24 +180,6 @@ impl Lapic {
                 LAPIC_LVT_TIMER_PERIODIC
                     | vector as u32,
             );
-        }
-    }
-
-    pub unsafe fn timer_current_count(
-        &self,
-    ) -> u32 {
-        unsafe {
-            self.read_u32(
-                LAPIC_TIMER_CURRENT_COUNT_OFFSET
-            )
-        }
-    }
-
-    pub unsafe fn timer_divide(&self) -> u32 {
-        unsafe {
-            self.read_u32(
-                LAPIC_TIMER_DIVIDE_OFFSET
-            )
         }
     }
 

@@ -115,10 +115,12 @@ impl ThreadManager {
         self.get(thread_id).is_some()
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn count(&self) -> usize {
         self.count
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn is_empty(&self) -> bool {
         self.count == 0
     }

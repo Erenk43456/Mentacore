@@ -332,6 +332,7 @@ impl PhysicalFrameAllocator {
         Ok(())
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn is_frame_used(
         &self,
         frame: Frame,
@@ -354,14 +355,17 @@ impl PhysicalFrameAllocator {
         })
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn allocated_count(&self) -> u64 {
         self.live_allocated_frames
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn total_allocations(&self) -> u64 {
         self.total_allocations
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn frame_count(&self) -> u64 {
         self.bitmap.frame_count()
     }

@@ -6,16 +6,11 @@ mod elf;
 
 pub use elf::{
     load as load_elf,
-    ElfError,
-    ElfHeader,
-    ElfLoadError,
-    LoadSegment,
     LoadedElf,
-    LoadedSegment,
+};
+
+#[cfg(feature = "kernel-tests")]
+pub use elf::{
+    ElfError,
     ParsedElf,
-    SegmentFlags,
-    PF_R,
-    PF_W,
-    PF_X,
-    PT_LOAD,
 };

@@ -79,13 +79,6 @@ impl RunnableQueue {
         self.find(thread_id).is_some()
     }
 
-    pub fn index_of(
-        &self,
-        thread_id: ThreadId,
-    ) -> Option<usize> {
-        self.find(thread_id)
-    }
-
     fn find(
         &self,
         thread_id: ThreadId,

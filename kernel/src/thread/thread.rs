@@ -13,7 +13,11 @@ pub type ThreadEntry = extern "C" fn() -> !;
 pub enum ThreadState {
     Ready,
     Running,
+
+    #[cfg(feature = "kernel-tests")]
     Blocked,
+
+    #[cfg(feature = "kernel-tests")]
     Terminated,
 }
 
@@ -78,14 +82,17 @@ impl Thread {
         self.process_id
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn state(&self) -> ThreadState {
         self.state
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn context(&self) -> &KernelContext {
         &self.context
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn context_mut(&mut self) -> &mut KernelContext {
         &mut self.context
     }

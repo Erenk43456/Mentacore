@@ -5,7 +5,9 @@ mod idt;
 mod serial;
 mod timer;
 
+#[cfg(feature = "kernel-tests")]
 pub use timer::timer_ticks;
+
 pub use timer::LAPIC_TIMER_VECTOR;
 
 #[cfg(feature = "kernel-tests")]
@@ -13,9 +15,6 @@ pub use timer::{
     disable_lapic_timer_preemption,
     enable_lapic_timer_preemption,
 };
-
-#[cfg(feature = "kernel-tests")]
-pub(crate) use idt::USER_TEST_VECTOR;
 
 #[cfg(feature = "kernel-tests")]
 pub use exceptions::trigger_double_fault_test;

@@ -52,10 +52,6 @@ impl KernelInterruptContext {
             rflags,
         }
     }
-
-    pub const fn size() -> usize {
-        core::mem::size_of::<Self>()
-    }
 }
 
 #[repr(C)]

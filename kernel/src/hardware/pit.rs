@@ -48,6 +48,7 @@ pub unsafe fn set_frequency(frequency: u32) {
     }
 }
 
+#[cfg(feature = "kernel-tests")]
 pub fn actual_frequency(frequency: u32) -> u32 {
     if frequency == 0 {
         return 0;

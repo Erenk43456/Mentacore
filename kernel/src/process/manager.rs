@@ -63,24 +63,10 @@ impl ProcessManager {
             .find(|process| process.pid() == process_id)
     }
 
-    pub fn get_mut(
-        &mut self,
-        process_id: ProcessId,
-    ) -> Option<&mut Process> {
-        self.processes
-            .iter_mut()
-            .flatten()
-            .find(|process| process.pid() == process_id)
-    }
-
     pub fn contains(
         &self,
         process_id: ProcessId,
     ) -> bool {
         self.get(process_id).is_some()
-    }
-
-    pub fn count(&self) -> usize {
-        self.count
     }
 }

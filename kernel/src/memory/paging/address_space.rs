@@ -1,6 +1,6 @@
 use super::{
-    mapper::{map_page, unmap_page},
-    registers::{current_pml4, load_cr3},
+    mapper::map_page,
+    registers::current_pml4,
     PageFlags,
     PageTable,
     ADDRESS_MASK,
@@ -9,12 +9,14 @@ use super::{
     USER,
     OWNED,
 };
+
+#[cfg(feature = "kernel-tests")]
+use super::mapper::unmap_page;
+
 use crate::memory::physical::{
     Frame,
     PhysicalFrameAllocator,
 };
-
-const USER_PML4_END: usize = ENTRY_COUNT / 2;
 
 pub struct AddressSpace {
     pml4: *mut PageTable,
@@ -24,6 +26,7 @@ pub struct AddressSpace {
 unsafe impl Send for AddressSpace {}
 
 impl AddressSpace {
+    #[cfg(feature = "kernel-tests")]
     pub unsafe fn new(
         allocator: &mut PhysicalFrameAllocator,
     ) -> Result<Self, ()> {
@@ -47,9 +50,12 @@ impl AddressSpace {
 
         unsafe {
             for index in 0..ENTRY_COUNT {
-                let entry = (*kernel_pml4).entries[index];
+                let entry =
+                    (*kernel_pml4).entries[index];
 
-                if entry & PRESENT != 0 && entry & USER == 0 {
+                if entry & PRESENT != 0
+                    && entry & USER == 0
+                {
                     (*pml4).entries[index] = entry;
                 }
             }
@@ -61,6 +67,7 @@ impl AddressSpace {
         })
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub unsafe fn from_pml4(
         pml4: *mut PageTable,
         pml4_address: u64,
@@ -77,16 +84,6 @@ impl AddressSpace {
 
     pub fn pml4_address(&self) -> u64 {
         self.pml4_address
-    }
-
-    pub unsafe fn activate(&self) {
-        unsafe {
-            load_cr3(self.pml4_address());
-        }
-    }
-
-    pub unsafe fn mapper(&self) -> Mapper {
-        unsafe { Mapper::new(self.pml4) }
     }
 
     pub unsafe fn map(
@@ -131,6 +128,7 @@ impl AddressSpace {
         }
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub unsafe fn unmap(
         &self,
         virtual_address: u64,
@@ -178,7 +176,7 @@ unsafe fn free_user_page_tables(
     pml4: *mut PageTable,
     allocator: &mut PhysicalFrameAllocator,
 ) {
-    for pml4_index in 0..USER_PML4_END {
+    for pml4_index in 0..256 {
         let pml4_entry =
             unsafe {
                 (*pml4).entries[pml4_index]
@@ -298,8 +296,8 @@ unsafe fn free_user_page_tables(
                 None => continue,
             };
 
-            let _ =
-                allocator.free_frame(pdpt_frame);
+        let _ =
+            allocator.free_frame(pdpt_frame);
     }
 }
 
@@ -350,6 +348,7 @@ impl Mapper {
         Ok(())
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub unsafe fn unmap(
         &self,
         virtual_address: u64,

@@ -48,7 +48,7 @@ pub fn prepare(
     };
 
     let kernel_user_test_address =
-        user_privilege_test as usize as u64;
+        user_privilege_test as *const () as usize as u64;
 
     let user_code_frame =
         kernel_user_test_address

@@ -32,6 +32,7 @@ impl KernelContext {
         }
     }
 
+    #[cfg(feature = "kernel-tests")]
     pub fn rsp(&self) -> u64 {
         self.rsp
     }
@@ -46,7 +47,8 @@ impl KernelContext {
 }
 
 unsafe extern "C" {
-    pub fn context_switch(
+    #[cfg(feature = "kernel-tests")]
+    pub unsafe fn context_switch(
         current: *mut KernelContext,
         next: *const KernelContext,
     );

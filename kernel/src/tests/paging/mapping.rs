@@ -314,7 +314,7 @@ pub(super) fn test_unmap_rejection(
             memory::paging::current_pml4()
         };
 
-    let mut mapper =
+    let mapper =
         unsafe {
             memory::paging::Mapper::new(pml4)
         };

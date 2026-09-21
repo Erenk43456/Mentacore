@@ -66,6 +66,7 @@ impl<T> Spinlock<T> {
         }
     }
 
+    #[cfg(feature = "kernel-tests")]
     #[inline]
     pub fn is_locked(&self) -> bool {
         self.locked.load(Ordering::Relaxed)
