@@ -93,9 +93,9 @@
 * [x] Invalid Opcode (#UD)
 * [x] General Protection Fault (#GP)
 * [x] Page Fault (#PF)
-* [ ] Common exception reporting infrastructure
-* [ ] Register dump helper
-* [ ] Standardized exception diagnostics
+* [x] Common exception reporting infrastructure
+* [x] Register dump helper
+* [x] Standardized exception diagnostics
 * [x] Double Fault (#DF)
 * [ ] Stack Segment Fault (#SS)
 * [ ] Invalid TSS (#TS)
@@ -305,6 +305,6 @@
 * [x] Prefer explicit interfaces between layers.
 * [x] Keep low-level code understandable and debuggable.
 * [x] Use serial diagnostics during kernel development.
-* [ ] Document important architectural decisions as the project evolves.
+* [x] Document important architectural decisions as the project evolves.
 * [x] Maintain regression tests for every completed subsystem.
 * [x] Avoid introducing higher-level dependencies before the required kernel infrastructure exists.
