@@ -8,10 +8,12 @@ pub unsafe fn initialize(
     frame_allocator: &mut PhysicalFrameAllocator,
     boot_info: &BootInfo,
 ) {
-    match memory::paging::init(
-        frame_allocator,
-        boot_info,
-    ) {
+    match unsafe {
+        memory::paging::init(
+            frame_allocator,
+            boot_info,
+        )
+    } {
         Ok(()) => {
             debug::write(
                 b"Paging initialized.\r\n"

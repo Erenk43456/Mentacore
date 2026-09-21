@@ -471,8 +471,10 @@ unsafe fn copy_segment_page(
     }
 
     let destination =
-        (physical_address as *mut u8)
-            .add(destination_offset);
+        unsafe {
+            (physical_address as *mut u8)
+                .add(destination_offset)
+        };
 
     for index in 0..length {
         unsafe {

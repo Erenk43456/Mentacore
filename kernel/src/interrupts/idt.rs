@@ -96,7 +96,9 @@ pub(crate) const PAGE_FAULT_VECTOR: usize = 14;
 
 #[cfg(feature = "kernel-tests")]
 pub(crate) unsafe fn clear_handler(vector: usize) {
-    IDT[vector] = IdtEntry::missing();
+    unsafe {
+        IDT[vector] = IdtEntry::missing();
+    }
 }
 
 pub(crate) unsafe fn init() {

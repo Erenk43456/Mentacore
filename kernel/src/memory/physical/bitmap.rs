@@ -125,7 +125,9 @@ impl FrameBitmap {
                 break;
             }
 
-            self.set(frame_number);
+            unsafe {
+                self.set(frame_number);
+            }
         }
     }
 

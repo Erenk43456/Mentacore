@@ -214,12 +214,14 @@ pub(super) unsafe fn map_physical_memory(
                 .checked_add(region_size)
                 .ok_or(())?;
 
-        map_physical_region(
-            pdpt,
-            allocator,
-            descriptor.physical_start,
-            region_end,
-        )?;
+        unsafe {
+            map_physical_region(
+                pdpt,
+                allocator,
+                descriptor.physical_start,
+                region_end,
+            )?;
+        }
     }
 
     Ok(())
