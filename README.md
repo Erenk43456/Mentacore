@@ -162,21 +162,23 @@ This structure is intended to make the kernel easier to extend as processes, add
 
 ## Kernel Test Infrastructure
 
-Mentacore includes a custom kernel-side test infrastructure designed specifically for `no_std` execution.
+Mentacore includes a custom kernel-side test infrastructure designed specifically for the `no_std` execution environment.
 
-The test system provides:
+The test system provides modular kernel test suites, serial-based reporting, aggregate results, and automated QEMU-based regression testing.
 
-* Custom `TestRunner` abstraction
-* Modular kernel test suites
-* Serial-based test reporting
-* Test pass/fail tracking
-* Aggregate test results
-* QEMU-based automated execution
-* Automated timeout handling
-* Kernel-reported failure detection
-* Automated `ALL TESTS PASSED` detection
+The complete test infrastructure is enabled through the `kernel-tests` Cargo feature and operates independently from the standard Rust test harness.
 
-The test infrastructure is enabled separately through the `kernel-tests` Cargo feature and does not depend on the standard Rust test harness.
+The current kernel test suite covers physical memory, paging, ELF loading, processes and threads, scheduling, system calls, userspace execution, heap allocation, CPU and interrupt handling, synchronization, and exception handling.
+
+For the complete test architecture, test suites, individual test coverage, QEMU runner behavior, and validation details, see [`docs/tests.md`](docs/tests.md).
+
+Current regression status:
+
+```text
+95/95 TESTS PASSED
+
+ALL TESTS PASSED
+```
 
 ### Test Suites
 
@@ -196,153 +198,13 @@ The current test suites cover:
 * Ring 3 userspace execution
 * ELF loading
 
-The complete kernel test suite currently validates:
-
-```text
-95/95 TESTS PASSED
-ALL TESTS PASSED
-```
-
-Current validated areas include:
-
-```text
-PHYSICAL MEMORY
-├── Frame allocation and freeing
-├── Frame reuse
-├── Allocation counters
-├── Double-free detection
-├── Invalid-frame detection
-├── Contiguous allocation
-├── Frame reservation
-├── Invalid reservation detection
-├── Allocation below address limits
-└── Conventional memory below 4 GiB
-
-PAGING AND ADDRESS SPACES
-├── Duplicate mapping rejection
-├── Page mapping and unmapping
-├── Invalid unmapping rejection
-├── User mapping permissions
-├── Virtual address layout
-├── Address-space creation
-├── Address-space mapping
-├── Address-space unmapping
-├── NX page flags
-└── Physical-to-virtual mapping
-
-ELF
-├── ELF header validation
-├── Load segment handling
-├── Zero-memory segments
-├── Segment data loading
-├── Invalid ELF detection
-├── Truncated header detection
-├── Program-header bounds validation
-├── Segment size validation
-├── Segment alignment validation
-├── Missing load-segment detection
-├── Entry-point validation
-├── File-range validation
-├── Kernel-space segment rejection
-├── ELF entry loading
-├── ELF segment loading
-└── Overlapping-segment rejection
-
-PROCESS AND THREADS
-├── Process creation
-├── Process state management
-├── Thread creation
-├── Thread state management
-├── Kernel context
-├── User interrupt context
-├── Kernel interrupt context
-├── Context layout
-├── Context switching
-├── Context startup
-├── Kernel stacks
-├── Kernel stack validation
-├── Direct kernel-stack allocation
-├── Thread manager creation
-├── Thread manager operations
-├── Kernel-stack allocation
-├── Kernel-stack cleanup
-└── Address-space cleanup
-
-SCHEDULER
-├── Scheduler creation
-├── Runnable queue creation
-├── Queue insertion
-├── Duplicate-thread rejection
-├── Queue removal
-├── Missing-thread removal
-├── Round-robin selection
-├── Current-thread removal
-├── Empty-queue handling
-├── Managed-thread validation
-├── Unknown-thread rejection
-├── Managed-thread selection
-├── Thread-state transitions
-├── Scheduler context switching
-├── Runtime initialization
-├── Missing-thread handling
-├── Replacement-thread selection
-├── Preemption
-└── Timer-driven preemption
-
-SYSTEM CALLS AND USERSPACE
-├── Syscall register context
-├── Thread ID syscall
-├── Unknown syscall handling
-├── User-address validation
-├── User-buffer validation
-├── Ring 3 transition
-└── Ring 3 syscall execution
-
-HEAP
-├── Basic allocation
-└── Multi-page allocation with demand paging
-
-CPU AND INTERRUPTS
-├── TSC calibration
-├── User GDT segments
-├── Interrupt state handling
-├── Trap-frame layout
-├── Timer stack alignment
-├── Timer stability
-├── LAPIC timer stack alignment
-├── LAPIC timer periodic behavior
-└── Timer context handling
-
-SYNCHRONIZATION
-├── Spinlock behavior
-├── Interrupt-safe spinlocks
-└── Interrupt-context spinlocks
-
-EXCEPTION HANDLING
-└── Double-fault handling with IST1
-```
-
-The test infrastructure is intentionally implemented inside the kernel so low-level subsystems can be validated in the actual `no_std` execution environment.
-
 ## QEMU Test Runner
 
-A dedicated QEMU test runner is provided separately from the normal development runner.
+Mentacore provides a dedicated QEMU regression runner for executing the kernel test suite in a controlled environment.
 
-The test runner:
+The runner builds the test configuration, prepares the EFI environment, launches QEMU, captures serial output, detects test completion or failure, and enforces timeouts.
 
-* Builds the kernel with kernel tests enabled
-* Builds the bootloader
-* Prepares the EFI boot environment
-* Copies the kernel into the test ESP
-* Starts QEMU independently
-* Captures kernel serial output
-* Detects test completion
-* Reports the final test result
-* Fails on timeout
-* Fails when the kernel reports a test failure
-* Validates userspace startup after kernel test completion
-
-This provides a repeatable regression-testing workflow without depending on the interactive development runner.
+The complete QEMU test workflow and validation behavior are documented in [`docs/tests.md`](docs/tests.md).
 
 ## Synchronization and Interrupt Safety
 
@@ -503,9 +365,9 @@ The development runner builds the kernel and bootloader, prepares the EFI enviro
 
 ### Test Runner
 
-The test runner builds the kernel with the `kernel-tests` feature and executes the kernel test suite automatically inside QEMU.
+The test runner builds the kernel with the `kernel-tests` feature and executes the kernel regression suite automatically inside QEMU.
 
-This separation keeps normal kernel execution independent from the test infrastructure while still allowing low-level regression testing.
+Detailed test and regression procedures are documented in [`docs/tests.md`](docs/tests.md).
 
 ## Long-Term Goal
 
