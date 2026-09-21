@@ -14,6 +14,7 @@ use super::{
     ParsedElf,
 };
 
+#[cfg(feature = "kernel-tests")]
 pub const MAX_LOADED_SEGMENTS: usize = 16;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -26,6 +27,7 @@ pub enum ElfLoadError {
     PhysicalAddressOutsideIdentityMap,
 }
 
+#[cfg(feature = "kernel-tests")]
 #[derive(Clone, Copy)]
 pub struct LoadedSegment {
     pub virtual_address: u64,
@@ -35,6 +37,7 @@ pub struct LoadedSegment {
     pub memory_size: u64,
 }
 
+#[cfg(feature = "kernel-tests")]
 impl LoadedSegment {
     pub const EMPTY: Self = Self {
         virtual_address: 0,
@@ -57,7 +60,10 @@ pub const USER_STACK_BASE: u64 =
 pub struct LoadedElf {
     address_space: AddressSpace,
     entry: u64,
+
+    #[cfg(feature = "kernel-tests")]
     segments: [LoadedSegment; MAX_LOADED_SEGMENTS],
+
     segment_count: usize,
     user_stack_top: u64,
 }
@@ -150,6 +156,7 @@ pub unsafe fn load(
             |_| ElfLoadError::AddressSpaceCreation,
         )?;
 
+    #[cfg(feature = "kernel-tests")]
     let mut segments =
         [LoadedSegment::EMPTY;
             MAX_LOADED_SEGMENTS];
@@ -163,18 +170,30 @@ pub unsafe fn load(
                     ElfLoadError::AddressOverflow,
                 )?;
 
-        let loaded =
-            unsafe {
-                load_segment(
-                    &address_space,
-                    allocator,
-                    &elf,
-                    segment,
-                )
-            }?;
+        #[cfg(feature = "kernel-tests")]
+        {
+            let loaded =
+                unsafe {
+                    load_segment(
+                        &address_space,
+                        allocator,
+                        &elf,
+                        segment,
+                    )
+                }?;
 
-        segments[segment_count] =
-            loaded;
+            segments[segment_count] = loaded;
+        }
+
+        #[cfg(not(feature = "kernel-tests"))]
+        unsafe {
+            load_segment(
+                &address_space,
+                allocator,
+                &elf,
+                segment,
+            )?;
+        }
 
         segment_count += 1;
     }
@@ -182,18 +201,27 @@ pub unsafe fn load(
     Ok(LoadedElf {
         address_space,
         entry: elf.entry(),
+
+        #[cfg(feature = "kernel-tests")]
         segments,
+
         segment_count,
         user_stack_top: 0,
     })
 }
+
+#[cfg(feature = "kernel-tests")]
+type LoadedSegmentResult = LoadedSegment;
+
+#[cfg(not(feature = "kernel-tests"))]
+type LoadedSegmentResult = ();
 
 unsafe fn load_segment(
     address_space: &AddressSpace,
     allocator: &mut PhysicalFrameAllocator,
     elf: &ParsedElf<'_>,
     segment: &LoadSegment,
-) -> Result<LoadedSegment, ElfLoadError> {
+) -> Result<LoadedSegmentResult, ElfLoadError> {
     if segment.memory_size == 0 {
         return Err(
             ElfLoadError::AddressOverflow,
@@ -232,6 +260,7 @@ unsafe fn load_segment(
         executable: segment.flags.executable,
     };
 
+    #[cfg(feature = "kernel-tests")]
     let mut first_physical_address = 0u64;
 
     for page_index in 0..page_count {
@@ -307,6 +336,7 @@ unsafe fn load_segment(
                 }
             };
 
+        #[cfg(feature = "kernel-tests")]
         if page_index == 0 {
             first_physical_address =
                 physical_address;
@@ -331,14 +361,21 @@ unsafe fn load_segment(
         }
     }
 
-    Ok(LoadedSegment {
-        virtual_address: page_start,
-        physical_address:
-            first_physical_address,
-        page_count,
-        file_size: segment.file_size,
-        memory_size: segment.memory_size,
-    })
+    #[cfg(feature = "kernel-tests")]
+    {
+        Ok(LoadedSegment {
+            virtual_address: page_start,
+            physical_address: first_physical_address,
+            page_count,
+            file_size: segment.file_size,
+            memory_size: segment.memory_size,
+        })
+    }
+
+    #[cfg(not(feature = "kernel-tests"))]
+    {
+        Ok(())
+    }
 }
 
 fn align_up(
