@@ -148,13 +148,15 @@ impl KernelTestRunner {
         );
     }
 
-    pub fn run_ring3_transition(
-        &mut self,
-    ) {
+    pub fn run_ring3_transition(&mut self) {
         self.runner.run(
             b"interrupts::ring3_transition",
             ring3::run,
         );
+
+        unsafe {
+            crate::interrupts::idt::restore_syscall_handler();
+        }
     }
 
     pub fn run_syscall(&mut self) {

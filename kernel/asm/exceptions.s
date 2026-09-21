@@ -80,6 +80,10 @@ invalid_opcode_entry:
 double_fault_entry:
     cli
 
+    ; Save the current IST1 RSP before pushing the software
+    ; register frame.
+    ;
+    ; This is the CPU-created #DF frame on IST1.
     mov rax, rsp
 
     push rax
@@ -101,9 +105,27 @@ double_fault_entry:
     jz .double_fault_dispatch_aligned
 
     sub rsp, 8
+    call double_fault_dispatch
+    add rsp, 8
+    jmp .double_fault_restore
 
 .double_fault_dispatch_aligned:
     call double_fault_dispatch
+
+.double_fault_restore:
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rax
+
+    add rsp, 8
+
+    iretq
 
 
 ; ------------------------------------------------------------

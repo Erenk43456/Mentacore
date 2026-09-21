@@ -1,7 +1,7 @@
 use crate::memory::physical::PhysicalFrameAllocator;
 
 mod exceptions;
-mod idt;
+pub(crate) mod idt;
 mod serial;
 mod timer;
 

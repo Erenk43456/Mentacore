@@ -101,6 +101,43 @@ pub(crate) unsafe fn clear_handler(vector: usize) {
     }
 }
 
+#[cfg(feature = "kernel-tests")]
+pub(crate) unsafe fn restore_page_fault_handler() {
+    let code_segment: u16;
+
+    unsafe {
+        asm!(
+            "mov {0:x}, cs",
+            out(reg) code_segment,
+            options(nostack, preserves_flags)
+        );
+
+        IDT[PAGE_FAULT_VECTOR].set_handler(
+            page_fault_entry,
+            code_segment,
+            0,
+        );
+    }
+}
+
+#[cfg(feature = "kernel-tests")]
+pub(crate) unsafe fn restore_syscall_handler() {
+    let code_segment: u16;
+
+    unsafe {
+        asm!(
+            "mov {0:x}, cs",
+            out(reg) code_segment,
+            options(nostack, preserves_flags)
+        );
+
+        IDT[0x80].set_user_handler(
+            syscall_interrupt_entry,
+            code_segment,
+        );
+    }
+}
+
 pub(crate) unsafe fn init() {
     unsafe {
         let code_segment: u16;

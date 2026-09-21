@@ -15,6 +15,55 @@ context_switch_test_trampoline:
 
 
 ; ------------------------------------------------------------
+; Double-fault recovery test entry
+; ------------------------------------------------------------
+
+extern DOUBLE_FAULT_TEST_RESUME_RIP
+extern DOUBLE_FAULT_TEST_RESUME_RSP
+
+global double_fault_test_entry
+
+double_fault_test_entry:
+    ; Save the stack pointer of the original kernel test call.
+    ;
+    ; After #DF, the CPU switches to IST1. The original RSP
+    ; is therefore not automatically restored by IRETQ.
+    mov [rel DOUBLE_FAULT_TEST_RESUME_RSP], rsp
+
+    ; Store an explicit continuation address for the test handler.
+    lea rax, [rel .resume]
+    mov [rel DOUBLE_FAULT_TEST_RESUME_RIP], rax
+
+    ; The page-fault IDT entry was deliberately cleared by the
+    ; Rust test before entering this function.
+    ;
+    ; Accessing the unmapped address therefore produces:
+    ;
+    ;   #PF -> no #PF handler -> #DF
+    ;
+    mov rdi, 0x0000_5000_0000_0000
+    mov al, [rdi]
+
+    ; Reaching this point means the expected double fault did not
+    ; occur.
+    xor eax, eax
+    ret
+
+.resume:
+    ; IRETQ returned us from the #DF IST1 stack.
+    ; Restore the original kernel test stack before RET.
+    mov rsp, [rel DOUBLE_FAULT_TEST_RESUME_RSP]
+
+    mov eax, 1
+
+    ; The test intentionally executed CLI before triggering #DF.
+    ; Re-enable interrupts before returning to the test runner.
+    sti
+
+    ret
+
+
+; ------------------------------------------------------------
 ; Ring 3 privilege-transition test entry
 ; ------------------------------------------------------------
 

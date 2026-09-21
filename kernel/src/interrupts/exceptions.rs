@@ -13,6 +13,19 @@ use super::TrapFrame;
 static NESTED_EXCEPTION_TEST_ARMED: AtomicU64 =
     AtomicU64::new(0);
 
+#[cfg(feature = "kernel-tests")]
+#[unsafe(no_mangle)]
+static mut DOUBLE_FAULT_TEST_RESUME_RIP: u64 = 0;
+
+#[cfg(feature = "kernel-tests")]
+#[unsafe(no_mangle)]
+static mut DOUBLE_FAULT_TEST_RESUME_RSP: u64 = 0;
+
+#[cfg(feature = "kernel-tests")]
+unsafe extern "C" {
+    fn double_fault_test_entry() -> bool;
+}
+
 #[unsafe(no_mangle)]
 extern "C" fn divide_error_dispatch(
     trap_frame: *const TrapFrame,
@@ -78,7 +91,7 @@ extern "C" fn double_fault_dispatch(
     trap_frame: *const TrapFrame,
     error_code: u64,
     cpu_rsp: u64,
-) -> ! {
+) {
     serial_write(b"\r\n");
     serial_write(b"================================\r\n");
     serial_write(b"       DOUBLE FAULT (#DF)\r\n");
@@ -106,7 +119,8 @@ extern "C" fn double_fault_dispatch(
     #[cfg(feature = "kernel-tests")]
     {
         let flag_address =
-            core::ptr::addr_of!(NESTED_EXCEPTION_TEST_ARMED) as u64;
+            core::ptr::addr_of!(NESTED_EXCEPTION_TEST_ARMED)
+                as u64;
 
         serial_write(b"DF TEST FLAG ADDRESS: ");
         serial_write_hex(flag_address);
@@ -175,44 +189,45 @@ extern "C" fn double_fault_dispatch(
     serial_write(b"\r\n");
 
     #[cfg(feature = "kernel-tests")]
-    {
-        if ist1_ok && nested_exception_armed {
-            let (passed, total) =
-                crate::tests::framework::result();
-
-            let passed = passed + 1;
-
+    if nested_exception_armed {
+        if !ist1_ok {
             serial_write(
-                b"[TEST] interrupts::double_fault_ist1 ... OK\r\n",
+                b"DOUBLE FAULT TEST FAILED\r\n",
             );
 
-            serial_write(b"\r\nRESULT: ");
-            crate::tests::framework::write_usize(passed);
-            serial_write(b"/");
-            crate::tests::framework::write_usize(total);
-            serial_write(b" TESTS PASSED\r\n");
-
-            if passed == total {
-                serial_write(b"ALL TESTS PASSED\r\n");
-            } else {
-                serial_write(b"TESTS FAILED\r\n");
+            loop {
+                core::hint::spin_loop();
             }
-        } else {
-            let (passed, total) =
-                crate::tests::framework::result();
+        }
 
+        unsafe {
+            idt::restore_page_fault_handler();
+        }
+
+        let resume_rip = unsafe {
+            core::ptr::read_volatile(
+                core::ptr::addr_of!(
+                    DOUBLE_FAULT_TEST_RESUME_RIP
+                ),
+            )
+        };
+
+        if resume_rip == 0 {
             serial_write(
-                b"[TEST] interrupts::double_fault_ist1 ... FAILED\r\n",
+                b"DOUBLE FAULT TEST RESUME RIP INVALID\r\n",
             );
 
-            serial_write(b"\r\nRESULT: ");
-            crate::tests::framework::write_usize(passed);
-            serial_write(b"/");
-            crate::tests::framework::write_usize(total);
-            serial_write(b" TESTS PASSED\r\n");
-
-            serial_write(b"TESTS FAILED\r\n");
+            loop {
+                core::hint::spin_loop();
+            }
         }
+
+        unsafe {
+            (*(trap_frame as *mut TrapFrame)).rip =
+                resume_rip;
+        }
+
+        return;
     }
 
     loop {
@@ -247,14 +262,15 @@ extern "C" fn general_protection_dispatch(
 }
 
 #[cfg(feature = "kernel-tests")]
-pub fn trigger_double_fault_test() -> ! {
+pub fn trigger_double_fault_test() -> bool {
     NESTED_EXCEPTION_TEST_ARMED.store(
         1,
         Ordering::Relaxed,
     );
 
     let flag_address =
-        core::ptr::addr_of!(NESTED_EXCEPTION_TEST_ARMED) as u64;
+        core::ptr::addr_of!(NESTED_EXCEPTION_TEST_ARMED)
+            as u64;
 
     serial_write(b"DF TEST FLAG ADDRESS: ");
     serial_write_hex(flag_address);
@@ -270,7 +286,7 @@ pub fn trigger_double_fault_test() -> ! {
     serial_write(b"\r\n");
 
     unsafe {
-        core::arch::asm!(
+        asm!(
             "cli",
             options(nostack)
         );
@@ -279,13 +295,7 @@ pub fn trigger_double_fault_test() -> ! {
             idt::PAGE_FAULT_VECTOR,
         );
 
-        core::ptr::read_volatile(
-            0x0000_5000_0000_0000 as *const u8,
-        );
-    }
-
-    loop {
-        core::hint::spin_loop();
+        double_fault_test_entry()
     }
 }
 
