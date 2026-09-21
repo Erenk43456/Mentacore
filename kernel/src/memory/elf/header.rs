@@ -1,4 +1,7 @@
-use super::ElfError;
+use super::{
+    program::PROGRAM_HEADER_SIZE,
+    ElfError,
+};
 
 pub const ELF_HEADER_SIZE: usize = 64;
 pub const ELF_CLASS_64: u8 = 2;
@@ -51,7 +54,9 @@ impl ElfHeader {
         let program_header_entry_size = read_u16(data, 54)?;
         let program_header_count = read_u16(data, 56)?;
 
-        if program_header_entry_size != 56 {
+        if program_header_entry_size
+            != PROGRAM_HEADER_SIZE as u16
+        {
             return Err(ElfError::InvalidProgramHeaderSize);
         }
 

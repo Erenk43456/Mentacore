@@ -8,6 +8,10 @@ const PIC2_DATA: u16 = 0xA1;
 
 const PIC_EOI: u8 = 0x20;
 
+const PIC_IRQ_COUNT: u8 = 16;
+const IO_DELAY_PORT: u16 = 0x80;
+const IO_DELAY_VALUE: u8 = 0;
+
 const ICW1_INIT: u8 = 0x10;
 const ICW1_ICW4: u8 = 0x01;
 
@@ -44,7 +48,7 @@ unsafe fn inb(port: u16) -> u8 {
 
 fn io_wait() {
     unsafe {
-        outb(0x80, 0);
+        outb(IO_DELAY_PORT, IO_DELAY_VALUE);
     }
 }
 
@@ -145,7 +149,7 @@ pub unsafe fn send_eoi(irq: u8) {
 }
 
 pub unsafe fn enable_irq(irq: u8) {
-    if irq >= 16 {
+    if irq >= PIC_IRQ_COUNT {
         return;
     }
 

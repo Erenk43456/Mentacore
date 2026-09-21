@@ -47,7 +47,9 @@ pub fn calibrate_tsc() -> u64 {
         end_tsc - start_tsc;
 
     let pit_frequency =
-        crate::hardware::pit::actual_frequency(100);
+        crate::hardware::pit::actual_frequency(
+            CALIBRATION_TICKS as u32,
+        );
 
     if pit_frequency == 0 {
         return 0;

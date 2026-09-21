@@ -14,6 +14,8 @@ use crate::memory::physical::{
     PhysicalFrameAllocator,
 };
 
+const USER_PML4_END: usize = ENTRY_COUNT / 2;
+
 pub struct AddressSpace {
     pml4: *mut PageTable,
     pml4_address: u64,
@@ -176,7 +178,7 @@ unsafe fn free_user_page_tables(
     pml4: *mut PageTable,
     allocator: &mut PhysicalFrameAllocator,
 ) {
-    for pml4_index in 0..256 {
+    for pml4_index in 0..USER_PML4_END {
         let pml4_entry =
             unsafe {
                 (*pml4).entries[pml4_index]

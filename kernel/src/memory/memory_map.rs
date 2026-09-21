@@ -1,4 +1,5 @@
 use mentacore_boot_protocol::BootInfo;
+use crate::memory::paging::PAGE_SIZE;
 
 pub(crate) const UEFI_CONVENTIONAL_MEMORY: u32 = 7;
 
@@ -92,7 +93,7 @@ impl<'a> MemoryMap<'a> {
         }
 
         let required_size =
-            (required_size + 4095) & !4095;
+            (required_size + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
 
         // Physical address 0 is intentionally avoided.
         const MIN_ADDRESS: u64 = 0x0010_0000;
