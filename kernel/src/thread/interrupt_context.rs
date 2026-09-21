@@ -110,10 +110,10 @@ impl InterruptContext {
             rax: 0,
 
             rip,
-            cs: 0x2B,
+            cs: crate::cpu::USER_CODE_SELECTOR as u64,
             rflags,
             rsp,
-            ss: 0x33,
+            ss: crate::cpu::USER_DATA_SELECTOR as u64,
         }
     }
 }

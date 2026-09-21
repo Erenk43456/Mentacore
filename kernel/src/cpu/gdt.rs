@@ -62,12 +62,12 @@ pub(super) struct GdtPointer {
     pub(super) base: u64,
 }
 
-pub(super) const KERNEL_CODE_SELECTOR: u16 = 0x08;
+pub(crate) const KERNEL_CODE_SELECTOR: u16 = 0x08;
 pub(super) const KERNEL_DATA_SELECTOR: u16 = 0x10;
 pub(super) const TSS_SELECTOR: u16 = 0x18;
 
-pub(super) const USER_CODE_SELECTOR: u16 = 0x2B;
-pub(super) const USER_DATA_SELECTOR: u16 = 0x33;
+pub(crate) const USER_CODE_SELECTOR: u16 = 0x2B;
+pub(crate) const USER_DATA_SELECTOR: u16 = 0x33;
 
 #[repr(align(16))]
 pub(super) struct Gdt {

@@ -2,6 +2,7 @@ use core::ptr::{read_volatile, write_volatile};
 
 use crate::cpu;
 
+const LAPIC_TIMER_DIVIDE_BY_1: u32 = 0x0000_000B;
 const IA32_APIC_BASE_MSR: u32 = 0x1B;
 const APIC_BASE_MASK: u64 = 0xFFFF_FFFF_FFFF_F000;
 const APIC_GLOBAL_ENABLE: u64 = 1 << 11;
@@ -201,7 +202,7 @@ impl Lapic {
             );
 
             self.set_timer_divide(
-                0x0000_000B
+                LAPIC_TIMER_DIVIDE_BY_1
             );
 
             self.set_timer_initial_count(
@@ -226,7 +227,7 @@ impl Lapic {
                     | vector as u32,
             );
 
-            self.set_timer_divide(0x0000_000B);
+            self.set_timer_divide(LAPIC_TIMER_DIVIDE_BY_1);
 
             self.set_timer_initial_count(
                 initial_count,

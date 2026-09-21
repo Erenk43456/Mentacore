@@ -135,7 +135,7 @@ impl Thread {
         let frame =
             super::KernelInterruptContext::new(
                 self.context.rip(),
-                0x08,
+                crate::cpu::KERNEL_CODE_SELECTOR as u64,
                 self.context.rflags(),
             );
 
@@ -178,7 +178,7 @@ impl Thread {
         let frame =
             super::InterruptContext::new_user(
                 entry,
-                0x202,
+                super::INITIAL_RFLAGS,
                 user_stack_top,
             );
 

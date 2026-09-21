@@ -17,6 +17,9 @@ use crate::sync::Spinlock;
 
 use super::Scheduler;
 
+const POST_CR3_STACK_TEST_ADDRESS: u64 = 0x0000_0000_02be_ff0;
+const POST_CR3_STACK_TEST_VALUE: u64 = 0x1122_3344_5566_7788;
+
 pub const IDLE_THREAD_ID: ThreadId = 0;
 pub const KERNEL_PROCESS_ID: ProcessId = 0;
 
@@ -483,11 +486,11 @@ impl SchedulerRuntime {
 
         unsafe {
             let stack_ptr =
-                0x0000_0000_02beff0u64 as *mut u64;
+                POST_CR3_STACK_TEST_ADDRESS as *mut u64;
 
             core::ptr::write_volatile(
                 stack_ptr,
-                0x1122334455667788,
+                POST_CR3_STACK_TEST_VALUE,
             );
 
             let value =

@@ -21,7 +21,7 @@ impl KernelContext {
         Self {
             rsp,
             rip,
-            rflags: 0x202,
+            rflags: super::INITIAL_RFLAGS,
 
             rbx: 0,
             rbp: 0,

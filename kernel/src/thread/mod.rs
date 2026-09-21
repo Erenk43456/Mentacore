@@ -4,6 +4,8 @@ mod manager;
 mod stack;
 mod thread;
 
+pub(crate) const INITIAL_RFLAGS: u64 = 0x202;
+
 pub use context::{
     context_switch,
     interrupt_context_switch,

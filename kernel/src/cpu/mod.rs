@@ -26,6 +26,12 @@ pub use tss::ist1_stack_top;
 
 pub use tss::kernel_stack_range;
 
+pub(crate) use gdt::{
+    KERNEL_CODE_SELECTOR,
+    USER_CODE_SELECTOR,
+    USER_DATA_SELECTOR,
+};
+
 #[inline]
 pub fn disable_interrupts() {
     state::disable_interrupts();
