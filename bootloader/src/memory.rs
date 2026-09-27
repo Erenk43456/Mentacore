@@ -6,6 +6,7 @@ use uefi::println;
 const PAGE_SIZE: u64 = 4096;
 const KERNEL_STACK_PAGES: usize = 4;
 const MAX_USERSPACE_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
+const MAX_KERNEL_STACK_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
 
 pub struct UserspaceImage {
     pub address: u64,
@@ -119,7 +120,7 @@ pub fn allocate_kernel_stack() -> Result<KernelStack, ()> {
 
     let stack_allocation = match boot::allocate_pages(
         AllocateType::MaxAddress(
-            MAX_USERSPACE_PHYSICAL_ADDRESS.into(),
+            MAX_KERNEL_STACK_PHYSICAL_ADDRESS.into(),
         ),
         MemoryType::LOADER_DATA,
         KERNEL_STACK_PAGES,
