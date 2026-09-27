@@ -7,6 +7,8 @@ const PAGE_SIZE: u64 = 4096;
 const KERNEL_STACK_PAGES: usize = 4;
 const MAX_USERSPACE_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
 const MAX_KERNEL_STACK_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
+const BOOT_INFO_PAGES: usize = 1;
+const MAX_BOOT_INFO_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
 
 pub struct UserspaceImage {
     pub address: u64,
@@ -16,6 +18,10 @@ pub struct UserspaceImage {
 pub struct KernelStack {
     pub base: u64,
     pub top: u64,
+}
+
+pub struct BootInfoStorage {
+    pub address: u64,
 }
 
 pub fn allocate_kernel(
@@ -113,6 +119,33 @@ pub fn allocate_userspace(userspace: &[u8]) -> Result<UserspaceImage, ()> {
         address: userspace_image_addr,
         size: userspace_size,
     })
+}
+
+pub fn allocate_boot_info() -> Result<BootInfoStorage, ()> {
+    println!("Allocating BootInfo storage...");
+
+    let allocation = match boot::allocate_pages(
+        AllocateType::MaxAddress(
+            MAX_BOOT_INFO_PHYSICAL_ADDRESS.into(),
+        ),
+        MemoryType::LOADER_DATA,
+        BOOT_INFO_PAGES,
+    ) {
+        Ok(ptr) => ptr,
+        Err(_) => {
+            println!("ERROR: Failed to allocate BootInfo storage.");
+            return Err(());
+        }
+    };
+
+    let address = allocation.as_ptr() as u64;
+
+    println!(
+        "BootInfo storage: {:#018x}",
+        address
+    );
+
+    Ok(BootInfoStorage { address })
 }
 
 pub fn allocate_kernel_stack() -> Result<KernelStack, ()> {

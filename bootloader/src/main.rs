@@ -9,6 +9,7 @@ mod memory;
 
 extern crate alloc;
 
+use core::ptr;
 use uefi::prelude::*;
 use uefi::println;
 
@@ -219,11 +220,29 @@ fn main() -> Status {
     );
 
     // ------------------------------------------------------------
+    // Boot info.
+    // ------------------------------------------------------------
+
+    let boot_info_storage = match memory::allocate_boot_info() {
+        Ok(storage) => storage,
+        Err(_) => loop {
+            core::hint::spin_loop();
+        }
+    };
+
+    unsafe {
+        ptr::write(
+            boot_info_storage.address as *mut _,
+            boot_info,
+        );
+    }
+
+    // ------------------------------------------------------------
     // Kernel handoff.
     // ------------------------------------------------------------
 
     handoff::enter_kernel(
-        &mut boot_info,
+        boot_info_storage.address,
         entry,
         stack_top,
     );

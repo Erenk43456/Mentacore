@@ -5,7 +5,7 @@ use uefi::mem::memory_map::MemoryMap;
 use uefi::println;
 
 pub fn enter_kernel(
-    boot_info: &mut BootInfo,
+    boot_info_addr: u64,
     entry: u64,
     stack_top: u64,
 ) -> ! {
@@ -17,6 +17,9 @@ pub fn enter_kernel(
     };
 
     let memory_map_meta = memory_map.meta();
+
+    let boot_info =
+        unsafe { &mut *(boot_info_addr as *mut BootInfo) };
 
     boot_info.memory_map_addr =
         memory_map.buffer().as_ptr() as u64;
@@ -34,7 +37,7 @@ pub fn enter_kernel(
         jump_to_kernel(
             entry,
             stack_top,
-            boot_info as *const BootInfo as u64,
+            boot_info_addr,
         );
     }
 }
