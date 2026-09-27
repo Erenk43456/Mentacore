@@ -10,6 +10,16 @@ pub fn enter_kernel(
     stack_top: u64,
 ) -> ! {
     println!("Preparing kernel handoff...");
+
+    let memory_map_storage =
+        match crate::memory::allocate_memory_map() {
+            Ok(storage) => storage,
+            Err(_) => loop {
+                core::hint::spin_loop();
+            }
+        };
+    println!("Memory map storage: {:#018x}", memory_map_storage.address);
+
     println!("Exiting UEFI boot services...");
 
     let memory_map = unsafe {
@@ -18,14 +28,32 @@ pub fn enter_kernel(
 
     let memory_map_meta = memory_map.meta();
 
+    let memory_map_size = memory_map_meta.map_size as usize;
+
+    if memory_map_size > memory_map_storage.capacity {
+        println!("ERROR: Memory map storage is too small.");
+
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            memory_map.buffer().as_ptr(),
+            memory_map_storage.address as *mut u8,
+            memory_map_size,
+        );
+    }
+
     let boot_info =
         unsafe { &mut *(boot_info_addr as *mut BootInfo) };
 
     boot_info.memory_map_addr =
-        memory_map.buffer().as_ptr() as u64;
+        memory_map_storage.address;
 
     boot_info.memory_map_size =
-        memory_map_meta.map_size as u64;
+        memory_map_size as u64;
 
     boot_info.memory_map_descriptor_size =
         memory_map_meta.desc_size as u32;

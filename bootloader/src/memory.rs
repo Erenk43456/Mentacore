@@ -10,6 +10,9 @@ const MAX_KERNEL_STACK_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
 const BOOT_INFO_PAGES: usize = 1;
 const MAX_BOOT_INFO_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
 
+const MEMORY_MAP_PAGES: usize = 64;
+const MAX_MEMORY_MAP_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
+
 pub struct UserspaceImage {
     pub address: u64,
     pub size: u64,
@@ -22,6 +25,11 @@ pub struct KernelStack {
 
 pub struct BootInfoStorage {
     pub address: u64,
+}
+
+pub struct MemoryMapStorage {
+    pub address: u64,
+    pub capacity: usize,
 }
 
 pub fn allocate_kernel(
@@ -146,6 +154,37 @@ pub fn allocate_boot_info() -> Result<BootInfoStorage, ()> {
     );
 
     Ok(BootInfoStorage { address })
+}
+
+pub fn allocate_memory_map() -> Result<MemoryMapStorage, ()> {
+    println!("Allocating memory map storage...");
+
+    let allocation = match boot::allocate_pages(
+        AllocateType::MaxAddress(
+            MAX_MEMORY_MAP_PHYSICAL_ADDRESS.into(),
+        ),
+        MemoryType::LOADER_DATA,
+        MEMORY_MAP_PAGES,
+    ) {
+        Ok(ptr) => ptr,
+        Err(_) => {
+            println!("ERROR: Failed to allocate memory map storage.");
+            return Err(());
+        }
+    };
+
+    let address = allocation.as_ptr() as u64;
+
+    println!(
+        "Memory map storage: {:#018x} - {:#018x}",
+        address,
+        address + (MEMORY_MAP_PAGES * 4096) as u64
+    );
+
+    Ok(MemoryMapStorage {
+        address,
+        capacity: MEMORY_MAP_PAGES * 4096,
+    })
 }
 
 pub fn allocate_kernel_stack() -> Result<KernelStack, ()> {
