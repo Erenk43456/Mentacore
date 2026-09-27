@@ -118,7 +118,9 @@ pub fn allocate_kernel_stack() -> Result<KernelStack, ()> {
     println!("Allocating kernel stack...");
 
     let stack_allocation = match boot::allocate_pages(
-        AllocateType::AnyPages,
+        AllocateType::MaxAddress(
+            MAX_USERSPACE_PHYSICAL_ADDRESS.into(),
+        ),
         MemoryType::LOADER_DATA,
         KERNEL_STACK_PAGES,
     ) {
