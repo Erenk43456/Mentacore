@@ -59,7 +59,7 @@ Write-Host ""
 # 2. Build userspace
 # ------------------------------------------------------------
 
-Write-Host "[2/8] Building userspace..."
+Write-Host "[2/8] Building userspace..." -ForegroundColor Cyan
 
 Push-Location (Join-Path $ProjectRoot "userspace")
 
@@ -69,15 +69,18 @@ $UserspaceBuildExitCode = $LASTEXITCODE
 Pop-Location
 
 if ($UserspaceBuildExitCode -ne 0) {
-    Write-Host "ERROR: Userspace build failed."
+    Write-Host "ERROR: Userspace build failed." -ForegroundColor Red
     exit $UserspaceBuildExitCode
 }
 
 if (-not (Test-Path $UserspaceElf)) {
-    Write-Host "ERROR: Userspace ELF not found:"
+    Write-Host "ERROR: Userspace ELF not found:" -ForegroundColor Red
     Write-Host $UserspaceElf
     exit 1
 }
+
+Write-Host "[OK] Userspace built." -ForegroundColor Green
+Write-Host ""
 
 # ------------------------------------------------------------
 # 3. Build bootloader
