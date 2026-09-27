@@ -13,6 +13,16 @@ const MAX_BOOT_INFO_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
 const MEMORY_MAP_PAGES: usize = 64;
 const MAX_MEMORY_MAP_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
 
+const PAGE_TABLE_ENTRIES: usize = 512;
+const PAGE_TABLE_PAGES: usize = 6;
+const HUGE_PAGE_SIZE: u64 = 2 * 1024 * 1024;
+
+const PRESENT: u64 = 1 << 0;
+const WRITABLE: u64 = 1 << 1;
+const HUGE_PAGE: u64 = 1 << 7;
+
+const MAX_PAGE_TABLE_PHYSICAL_ADDRESS: u64 = 0xFFFF_FFFF;
+
 pub struct UserspaceImage {
     pub address: u64,
     pub size: u64,
@@ -30,6 +40,10 @@ pub struct BootInfoStorage {
 pub struct MemoryMapStorage {
     pub address: u64,
     pub capacity: usize,
+}
+
+pub struct BootPageTables {
+    pub pml4_address: u64,
 }
 
 pub fn allocate_kernel(
@@ -184,6 +198,86 @@ pub fn allocate_memory_map() -> Result<MemoryMapStorage, ()> {
     Ok(MemoryMapStorage {
         address,
         capacity: MEMORY_MAP_PAGES * 4096,
+    })
+}
+
+pub fn allocate_boot_page_tables() -> Result<BootPageTables, ()> {
+    println!("Allocating boot page tables...");
+
+    let allocation = match boot::allocate_pages(
+        AllocateType::MaxAddress(
+            MAX_PAGE_TABLE_PHYSICAL_ADDRESS.into(),
+        ),
+        MemoryType::LOADER_DATA,
+        PAGE_TABLE_PAGES,
+    ) {
+        Ok(ptr) => ptr,
+        Err(_) => {
+            println!("ERROR: Failed to allocate boot page tables.");
+            return Err(());
+        }
+    };
+
+    let base = allocation.as_ptr() as u64;
+
+    if base % PAGE_SIZE != 0 {
+        println!("ERROR: Boot page tables are not page aligned.");
+        return Err(());
+    }
+
+    unsafe {
+        core::ptr::write_bytes(
+            base as *mut u8,
+            0,
+            PAGE_TABLE_PAGES * PAGE_SIZE as usize,
+        );
+    }
+
+    let pml4 = base as *mut [u64; PAGE_TABLE_ENTRIES];
+    let pdpt =
+        (base + PAGE_SIZE) as *mut [u64; PAGE_TABLE_ENTRIES];
+
+    unsafe {
+        (*pml4)[0] =
+            (base + PAGE_SIZE)
+            | PRESENT
+            | WRITABLE;
+
+        for pd_index in 0..4 {
+            let pd_address =
+                base + (2 + pd_index as u64) * PAGE_SIZE;
+
+            (*pdpt)[pd_index] =
+                pd_address
+                | PRESENT
+                | WRITABLE;
+
+            let pd =
+                pd_address as *mut [u64; PAGE_TABLE_ENTRIES];
+
+            for entry_index in 0..PAGE_TABLE_ENTRIES {
+                let physical_address =
+                    (pd_index as u64)
+                        * 1024 * 1024 * 1024
+                    + (entry_index as u64)
+                        * HUGE_PAGE_SIZE;
+
+                (*pd)[entry_index] =
+                    physical_address
+                    | PRESENT
+                    | WRITABLE
+                    | HUGE_PAGE;
+            }
+        }
+    }
+
+    println!(
+        "Boot PML4: {:#018x}",
+        base
+    );
+
+    Ok(BootPageTables {
+        pml4_address: base,
     })
 }
 

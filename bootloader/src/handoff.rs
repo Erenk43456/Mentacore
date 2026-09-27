@@ -6,6 +6,7 @@ use uefi::println;
 
 pub fn enter_kernel(
     boot_info_addr: u64,
+    pml4_address: u64,
     entry: u64,
     stack_top: u64,
 ) -> ! {
@@ -66,6 +67,7 @@ pub fn enter_kernel(
             entry,
             stack_top,
             boot_info_addr,
+            pml4_address,
         );
     }
 }
@@ -75,5 +77,6 @@ unsafe extern "C" {
         entry: u64,
         stack_top: u64,
         boot_info: u64,
+        pml4_address: u64,
     ) -> !;
 }

@@ -15,19 +15,24 @@ jump_to_kernel:
     ; RCX = entry
     ; RDX = stack_top
     ; R8  = boot_info
+    ; R9  = pml4_address
 
     mov rax, rcx
-    mov rsp, rdx
-
-    ; Kernel uses the x86_64 SysV C ABI.
-    ; A normal call would push an 8-byte return address,
-    ; so emulate that stack alignment before entering via jmp.
-    sub rsp, 8
-    
-    mov rdi, r8
 
     ; Kernel uses System V-style first argument:
     ; RDI = BootInfo
-    ;
+    mov rdi, r8
+
+    ; Switch to the bootloader-controlled page table.
+    mov cr3, r9
+
+    ; Switch to the kernel stack.
+    mov rsp, rdx
+
+    ; A normal call would push an 8-byte return address.
+    ; The kernel entry is reached with jmp, so emulate that
+    ; stack layout for the SysV ABI.
+    sub rsp, 8
+
     ; Never returns.
     jmp rax

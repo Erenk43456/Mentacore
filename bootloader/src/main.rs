@@ -159,6 +159,23 @@ fn main() -> Status {
     );
 
     // ------------------------------------------------------------
+    // Allocate boot page tables.
+    // ------------------------------------------------------------
+
+    let boot_page_tables =
+        match memory::allocate_boot_page_tables() {
+            Ok(page_tables) => page_tables,
+            Err(_) => loop {
+                core::hint::spin_loop();
+            }
+        };
+
+    println!(
+        "Boot page table: {:#018x}",
+        boot_page_tables.pml4_address
+    );
+
+    // ------------------------------------------------------------
     // Initialize framebuffer.
     // ------------------------------------------------------------
 
@@ -243,6 +260,7 @@ fn main() -> Status {
 
     handoff::enter_kernel(
         boot_info_storage.address,
+        boot_page_tables.pml4_address,
         entry,
         stack_top,
     );
